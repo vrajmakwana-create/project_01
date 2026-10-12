@@ -9,3 +9,6 @@ class Roles:
     ADMIN = "admin"
     EMPLOYEE = "employee"
     USER = "user"
+
+# RESUME FILE SIZE
+RESUME_FILE_SIZE = 100
