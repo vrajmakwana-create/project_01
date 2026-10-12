@@ -7,6 +7,7 @@ from app.core.exception_handler import setup_exception_handlers
 from app.core.message import SuccessMessage
 from app.api.routes import app_router
 from app.db import models
+from prometheus_fastapi_instrumentator import Instrumentator
 
 logger = get_logger(__name__)
 
@@ -22,6 +23,8 @@ app = FastAPI(
     title=settings.APP_NAME,
     lifespan=lifespan,
 )
+
+Instrumentator().instrument(app).expose(app)
 
 # Setup Exception Handlers (integrates fastapi-response-handler)
 setup_exception_handlers(app)

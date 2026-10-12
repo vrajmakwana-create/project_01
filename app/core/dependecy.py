@@ -4,10 +4,11 @@ from app.db.session import get_db
 from app.core.message import ErrorMessage
 from app.core.jwt import verify_token
 from app.repository.role_repository import RoleRepository
+from app.repository.user_session_repository import UserSessionRepository
 from app.repository.role_permission_repository import RolePermissionRepository
 
 
-def validate_token(request: Request):
+def validate_token(request: Request, db):
     headers = request.headers
     bearer_token = headers.get("authorization")
 
@@ -18,11 +19,21 @@ def validate_token(request: Request):
         )
 
     token = bearer_token.split(" ")[1]
+
+    # # Also Check Active User Session
+    user_session_repo = UserSessionRepository(db)
+    user_session = user_session_repo.get_by_field("session", token)
+    if not user_session:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail=ErrorMessage.SESSION_EXPIRED,
+        )
+
     return verify_token(token)
 
 
 def current_user(request: Request, db: Session = Depends(get_db)):
-    return validate_token(request)
+    return validate_token(request, db)
 
 
 class RoleCheck:
@@ -30,7 +41,7 @@ class RoleCheck:
         self.allowed_roles = roles
 
     def __call__(self, request: Request, db: Session = Depends(get_db)):
-        payload = validate_token(request)
+        payload = validate_token(request, db)
         role_id = payload.get("role_id", None)
 
         if not role_id:
@@ -62,7 +73,7 @@ class PermissionCheck:
         self.allowed_permissions = permissions
 
     def __call__(self, request: Request, db: Session = Depends(get_db)):
-        payload = validate_token(request)
+        payload = validate_token(request, db)
         role_id = payload.get("role_id", None)
 
         if not role_id:

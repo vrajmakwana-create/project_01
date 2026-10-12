@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     # JWT
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRY: int = 60
-    JWT_REFRESH_TOKEN_EXPIRY: int = 1440
+    JWT_ACCESS_TOKEN_EXPIRY: int
+    JWT_REFRESH_TOKEN_EXPIRY: int 
 
     # Services
     BREVO_API_KEY: str = ""

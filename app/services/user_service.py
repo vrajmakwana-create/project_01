@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.common.utils import generate_otp, get_unix_time, send_email_verification_email
 from app.core.constants import (
-    DEFAULT_ROLE_NAME,
+    Roles,
     JWT_ACCESS_TOKEN_EXPIRY_TIME,
     JWT_REFRESH_TOKEN_EXPIRY_TIME,
 )
@@ -16,6 +16,7 @@ from app.core.response import success_response
 from app.db.models.user import User
 from app.repository.role_repository import RoleRepository
 from app.repository.user_repository import UserRepository
+from app.repository.user_session_repository import UserSessionRepository
 from app.schema.user import (
     UserDetail,
     UserLogin,
@@ -24,9 +25,12 @@ from app.schema.user import (
     UserOTPVerifyResponse,
     UserRegistration,
     UserRegistrationResponse,
+    UserChangePassword, 
+    UserRefreshToken,
+    UserRefreshTokenResponse
 )
 from app.core.hash import verify_password
-from app.core.jwt import generate_token
+from app.core.jwt import generate_token, verify_token
 
 logger = get_logger(__name__)
 
@@ -37,6 +41,7 @@ class UserService:
         self.db = db
         self.user_repo = UserRepository(self.db)
         self.role_repo = RoleRepository(self.db)
+        self.user_session_repo = UserSessionRepository(self.db)
 
     async def register_user(self, payload: UserRegistration):
         try:
@@ -72,7 +77,7 @@ class UserService:
                 email, full_name, user_data.get("otp"), user_data.get("otp_expiry")
             )
 
-            role_detail = self.role_repo.get_by_field("role_name", DEFAULT_ROLE_NAME)
+            role_detail = self.role_repo.get_by_field("role_name", Roles.EMPLOYEE)
             if not role_detail:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -188,6 +193,14 @@ class UserService:
                 token_payload, expiry_time_in_min=JWT_REFRESH_TOKEN_EXPIRY_TIME
             )
 
+            # Create Session Record 
+            user_session_data = {
+                "user_id": user.id,
+                "session": access_token,
+                "refresh_token": refresh_token
+            }
+            self.user_session_repo.add_user_session(user_session_data)
+
             response_data = UserLoginResponse(
                 user=UserDetail.model_validate(user),
                 access_token=access_token,
@@ -198,6 +211,79 @@ class UserService:
                 status_code=http_status.HTTP_200_OK,
                 msg=SuccessMessage.USER_LOGIN_SUCCESSFULLY,
                 data=response_data,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message=str(e))
+
+    async def change_password(self, payload: UserChangePassword, user_id: str):
+        try:
+            user = self.user_repo.get(user_id)
+            if not user:
+                raise HTTPException(
+                    status_code=http_status.HTTP_404_NOT_FOUND,
+                    detail=ErrorMessage.USER_NOT_FOUND,
+                )
+
+            if not verify_password(payload.old_password, user.password):
+                raise HTTPException(
+                    status_code=http_status.HTTP_401_UNAUTHORIZED,
+                    detail=ErrorMessage.WRONG_OLD_PASSWORD,
+                )
+
+            user.password = payload.new_password
+            self.db.commit()
+            self.db.refresh(user)
+
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg=SuccessMessage.USER_CHANGE_PASSWORD_SUCCESSFULLY,
+                data=None,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message=str(e))
+
+    async def refresh_token(self, payload: UserRefreshToken):
+        try:
+            refresh_token = payload.refresh_token
+            user_session = self.user_session_repo.get_by_field("refresh_token", refresh_token)
+
+            if not user_session:
+                raise HTTPException(
+                    status_code=http_status.HTTP_404_NOT_FOUND,
+                    detail=ErrorMessage.USER_SESSION_NOT_FOUND,
+                )
+            
+            # Check Expiry of Refresh Token
+            payload = verify_token(refresh_token)
+            
+            token_payload = {
+                "user_id": str(payload["user_id"]),
+                "role_id": str(payload["role_id"]),
+            }
+
+            access_token = generate_token(
+                token_payload, expiry_time_in_min=JWT_ACCESS_TOKEN_EXPIRY_TIME
+            )
+            refresh_token = generate_token(
+                token_payload, expiry_time_in_min=JWT_REFRESH_TOKEN_EXPIRY_TIME
+            )
+
+            user_session.session = access_token
+            user_session.refresh_token = refresh_token
+            self.db.commit()
+            self.db.refresh(user_session)
+
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg=SuccessMessage.USER_SESSION_REFRESHED_SUCCESSFULLY,
+                data=UserRefreshTokenResponse.model_validate({
+                    "access_token": access_token,
+                    "refresh_token": refresh_token
+                })
             )
         except HTTPException:
             raise

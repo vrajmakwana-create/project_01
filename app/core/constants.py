@@ -1,6 +1,11 @@
+from app.core.config import settings
+
 # JWT Constants
-JWT_ACCESS_TOKEN_EXPIRY_TIME = 60
-JWT_REFRESH_TOKEN_EXPIRY_TIME = 1440
+JWT_ACCESS_TOKEN_EXPIRY_TIME = settings.JWT_ACCESS_TOKEN_EXPIRY
+JWT_REFRESH_TOKEN_EXPIRY_TIME = settings.JWT_REFRESH_TOKEN_EXPIRY
 
 # Role Constants
-DEFAULT_ROLE_NAME = "employee"
+class Roles:
+    ADMIN = "admin"
+    EMPLOYEE = "employee"
+    USER = "user"
