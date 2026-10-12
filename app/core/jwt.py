@@ -1,3 +1,7 @@
+from app.repository.user_session_repository import UserSessionRepository
+from app.db.session import get_db
+from fastapi import Depends
+from app.db.session import Session
 from datetime import datetime, timezone, timedelta
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
@@ -34,7 +38,7 @@ def verify_token(token: str) -> dict:
     user_id = None
     try:
         payload = jwt.decode(token=token, key=JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("user_id", "Unknown")
+        user_id = payload.get("user_id")
         return payload
     except ExpiredSignatureError as e:
         logger.error(

@@ -1,3 +1,5 @@
+from sqlalchemy.engine.processors import str_to_datetime
+from app.db import session
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from app.core.hash import password_hash
@@ -62,3 +64,26 @@ class UserLoginResponse(BaseModel):
     access_token: str
     refresh_token: str
     user: UserDetail
+
+
+class UserChangePassword(BaseModel):
+    old_password: str = Field(..., description="Old password of user")
+    new_password: str = Field(..., description="New password of user")
+
+    @field_validator("new_password", mode="after")
+    def hash_new_password(cls, v: str) -> str:
+        return password_hash(v)
+
+class UserSession(BaseModel):
+    session: str
+    user_id: str
+    refresh_token: str  
+
+class UserRefreshToken(BaseModel):
+    refresh_token: str
+
+class UserRefreshTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+
+    model_config = ConfigDict(from_attributes=True)

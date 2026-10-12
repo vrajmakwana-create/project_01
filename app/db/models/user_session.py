@@ -7,6 +7,7 @@ class UserSession(IdMixins, TimeMixins):
     __tablename__ = "user_sessions"
 
     session: Mapped[str] = mapped_column(String)
+    refresh_token: Mapped[str] = mapped_column(String)
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
 
