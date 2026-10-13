@@ -5,3 +5,9 @@ from app.db.models.user_information import UserInformation
 from app.db.models.role import Role
 from app.db.models.permission import Permission
 from app.db.models.role_permission import RolePermission
+from app.db.models.personal_info_resume import PersonalInfoResume
+from app.db.models.professional_summary_resume import ProfessionalSummaryResume
+from app.db.models.skill_resume import SkillResume
+from app.db.models.educational_info_resume import EducationalInfoResume
+from app.db.models.projects_info_resume import ProjectInfoResume
+from app.db.models.work_experience_resume import WorkExperienceResume
