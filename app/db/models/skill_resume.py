@@ -1,3 +1,4 @@
+from sqlalchemy.dialects.postgresql import JSONB
 from email.policy import default
 from sqlalchemy import Boolean, ForeignKey
 from app.db.models.user import User
@@ -10,8 +11,7 @@ class SkillResume(IdMixins, TimeMixins):
     __tablename__ = "skills_resume"
 
     # Skill Name
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    rate_skill: Mapped[float] = mapped_column(Float, nullable = True, default = None)
+    skills: Mapped[list[str]] = mapped_column(JSONB, nullable = False)
     is_original: Mapped[bool] = mapped_column(Boolean, nullable = True, default = False)
 
     # Relationships

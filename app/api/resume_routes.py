@@ -1,3 +1,4 @@
+from app.schema.resume import PersonalInfoSchema, ProfessionalSummarySchema, PersonalInfoUpdateSchema
 from app.core.dependecy import PermissionCheck
 from fastapi import APIRouter, Depends, Request, UploadFile, File
 from sqlalchemy.orm import Session
@@ -15,3 +16,23 @@ router = APIRouter(prefix="/resume", tags=["Resume"])
 async def upload_resume(request:Request, file: UploadFile = File(...), db: Session = Depends(get_db), user = Depends(current_user)):
     resume_service = ResumeService(request, db)
     return await resume_service.upload_resume(user["user_id"], file)
+
+@router.post("/save-personal-info")
+async def save_personal_info(request:Request, personal_info: PersonalInfoSchema, db: Session = Depends(get_db), user = Depends(current_user)):
+    resume_service = ResumeService(request, db)
+    return await resume_service.save_personal_info(personal_info, user['user_id'])
+
+@router.patch("/update-personal-info")
+async def update_personal_info(request:Request, personal_info: PersonalInfoUpdateSchema, db: Session = Depends(get_db), user = Depends(current_user)):
+    resume_service = ResumeService(request, db)
+    return await resume_service.update_personal_info(personal_info, user['user_id'])
+
+@router.post("/save-professional-summary")
+async def save_professional_summary(request:Request, personal_summary: ProfessionalSummarySchema, db: Session = Depends(get_db), user = Depends(current_user)):
+    resume_service = ResumeService(request, db)
+    return await resume_service.save_professional_summary(personal_summary, user['user_id'])
+
+@router.patch("/update-professional-summary")
+async def save_professional_summary(request:Request, personal_summary: ProfessionalSummarySchema, db: Session = Depends(get_db), user = Depends(current_user)):
+    resume_service = ResumeService(request, db)
+    return await resume_service.update_professional_summary(personal_summary, user['user_id'])
