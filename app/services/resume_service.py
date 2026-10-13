@@ -19,7 +19,7 @@ from app.repository.user_repository import UserRepository
 from app.repository.user_session_repository import UserSessionRepository
 from app.core.hash import verify_password
 from app.core.jwt import generate_token, verify_token
-from app.schema.resume import PersonalInfoSchema, ProfessionalSummarySchema
+from app.schema.resume import PersonalInfoSchema, ProfessionalSummarySchema, SkillSchema
 from app.repository.personal_info_resume_repository import PersonalInfoResumeRepository
 from app.repository.professional_summary_resume_repository import ProfessionalSummaryResumeRepository
 from app.repository.educational_info_resume_repository import EducationalInfoResumeRepository
@@ -76,7 +76,6 @@ class ResumeService:
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             
-            print(f"file :: {file}")
             
         except HTTPException:
             raise
@@ -159,7 +158,7 @@ class ResumeService:
             )
 
             if is_professional_summary_exist:
-                return HTTPException(
+                raise HTTPException(
                     status_code = http_status.HTTP_400_BAD_REQUEST,
                     detail = ErrorMessage.PROFESSIONAL_SUMMARY_ALREADY_EXIST
                 )
@@ -219,14 +218,67 @@ class ResumeService:
             raise ServerException(message = str(e))
 
     
-    async def save_skills(self, skills: list[str], user_id: str):
+    async def save_skills(self, skills_payload: SkillSchema, user_id: str):
         try:
-            pass
+            is_skill_exist, _ = self.resume_service_utils.check_skills_exist(user_id)
+
+            if is_skill_exist:
+                raise HTTPException(
+                    status_code = http_status.HTTP_400_BAD_REQUEST,
+                    detail = ErrorMessage.SKILLS_ALREADY_EXISTS
+                )
+
+            skill_data = skills_payload.model_dump()
+
+            skill_data.update(
+                {
+                    "is_original": True, 
+                    "user_id": user_id
+                }
+            )
+
+            result = self.skill_resume_repo.create(
+                skill_data
+            )
+
+            return success_response(
+                status_code= http_status.HTTP_200_OK,
+                msg=SuccessMessage.SKILLS_SAVED_SUCCESSFULLY,
+                data= SkillSchema.model_validate(result)
+            )
+            
         except HTTPException:
             raise
         except Exception as e:
             raise ServerException(message = str(e))
             
+    async def update_skills(self, skills_payload: SkillSchema, user_id: str):
+        try:
+            is_skill_exist, skills_record = self.resume_service_utils.check_skills_exist(user_id)
+
+            if not is_skill_exist or not skills_record:
+                raise HTTPException(
+                    status_code = http_status.HTTP_404_NOT_FOUND,
+                    detail = ErrorMessage.SKILLS_NOT_FOUND
+                )
+
+            skill_data = skills_payload.model_dump()
+
+            # Update the Skill Record Db Object with new skills
+            result = self.skill_resume_repo.update(
+                skills_record, {"skills": skill_data.get("skills", [])}
+            )
+
+            return success_response(
+                status_code= http_status.HTTP_200_OK,
+                msg=SuccessMessage.SKILLS_SAVED_SUCCESSFULLY,
+                data= SkillSchema.model_validate(result)
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message = str(e))
 
 class ResumeServiceUtils:
 
@@ -256,7 +308,9 @@ class ResumeServiceUtils:
             "user_id", user_id,
         )
 
-        return True if is_exist else False, is_exist or None
+        if is_exist:
+            return True, is_exist
+        return False, None
 
     def check_professional_original_summary_exist(self, user_id):
         is_exist = self.professional_summary_repo.get_all(
@@ -266,4 +320,18 @@ class ResumeServiceUtils:
             }
         )
 
-        return True if len(is_exist) == 1 else False, is_exist[0] or None
+        if is_exist:
+            return True, is_exist[0]
+        return False, None
+    
+    def check_skills_exist(self, user_id):
+        skills = self.skills_repo.get_all(
+            filters = {
+                "user_id": user_id,
+                "is_original": True
+            }
+        )
+
+        if skills:
+            return True, skills[0]
+        return False, None

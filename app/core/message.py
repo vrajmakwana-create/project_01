@@ -17,6 +17,7 @@ class SuccessMessage:
     PERSONAL_INFORMATION_UPDATED_SUCCESSFULLY = "Personal information Updated Successfully!"
     PROFESSIONAL_SUMMARY_SAVED_SUCCESSFULLY = "Professional Summary Saved Successfully!"
     PROFESSIONAL_SUMMARY_UPDATED_SUCCESSFULLY = "Professional Summary Updated Successfully!"
+    SKILLS_SAVED_SUCCESSFULLY = "Skills Saved Successfully!"
 
 class ErrorMessage:
     TOKEN_EXPIRE = "Token Expired!"
@@ -41,5 +42,7 @@ class ErrorMessage:
     PROFESSIONAL_SUMMARY_ALREADY_EXIST = "professional summary already exist!"
     PROFESSIONAL_SUMMARY_NOT_FOUND = "professional summary not found!"
 
+    SKILLS_NOT_FOUND = "Skills not found!"
+    SKILLS_ALREADY_EXISTS = "Skills Already Exists"
 class LoggerMessage:
     ExpiredSignatureError_Logtext = "user_id :: {user_id} & error :: {e}"

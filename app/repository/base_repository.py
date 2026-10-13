@@ -18,15 +18,19 @@ class BaseRepository(Generic[ModelType]):
         self.db = db
 
     def get(self, id: str) -> Optional[ModelType]:
-        return self.db.query(self.model).filter(self.model.id == id).first()
+        return self.db.query(self.model).filter(self.model.id == id, self.model.is_active == True, self.model.is_deleted == False).first()
 
     def get_by_field(self, field_name: str, value: Any) -> Optional[ModelType]:
         if not hasattr(self.model, field_name):
             raise ValueError(f"Invalid model field: {field_name}")
-            
+
         return (
             self.db.query(self.model)
-            .filter(getattr(self.model, field_name) == value)
+            .filter(
+                getattr(self.model, field_name) == value,
+                self.model.is_deleted == False,
+                self.model.is_active == True
+            )
             .first()
         )
 
