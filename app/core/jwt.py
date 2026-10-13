@@ -1,7 +1,3 @@
-from app.repository.user_session_repository import UserSessionRepository
-from app.db.session import get_db
-from fastapi import Depends
-from app.db.session import Session
 from datetime import datetime, timezone, timedelta
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTError
@@ -41,19 +37,15 @@ def verify_token(token: str) -> dict:
         user_id = payload.get("user_id")
         return payload
     except ExpiredSignatureError as e:
-        logger.error(
-            LoggerMessage.ExpiredSignatureError_Logtext.format(user_id=user_id, e=e),
-            exc_info=True,
+        logger.warning(
+            LoggerMessage.ExpiredSignatureError_Logtext.format(user_id=user_id, e=e)
         )
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessage.TOKEN_EXPIRE,
         )
     except JWTError as e:
-        logger.error(
-            LoggerMessage.ExpiredSignatureError_Logtext.format(user_id=user_id, e=e),
-            exc_info=True,
-        )
+        logger.warning(f"Invalid JWT Token for user {user_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail=ErrorMessage.INVALID_TOKEN,

@@ -1,13 +1,17 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+
 from app.core.config import settings
 from app.core.logger import get_logger
-from app.core.response import success_response
+from app.core.response import success_response, error_response
 from app.core.exception_handler import setup_exception_handlers
 from app.core.message import SuccessMessage
+from app.core.limiter import limiter
 from app.api.routes import app_router
 from app.db import models
-from prometheus_fastapi_instrumentator import Instrumentator
 
 logger = get_logger(__name__)
 
@@ -24,6 +28,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate Limiter setup
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return error_response(
+        status_code=429,
+        msg="Rate limit exceeded: 5 attempts per minute. Please try again later.",
+        data={"detail": str(exc.detail)},
+    )
+
+
+# Prometheus Instrumentation
 Instrumentator().instrument(app).expose(app)
 
 # Setup Exception Handlers (integrates fastapi-response-handler)

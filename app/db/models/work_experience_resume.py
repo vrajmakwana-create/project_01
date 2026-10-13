@@ -1,20 +1,19 @@
-from email.policy import default
-from sqlalchemy import Boolean, ForeignKey, Integer
-from app.db.models.user import User
-from sqlalchemy.orm import relationship, Mapped, mapped_column
-from sqlalchemy import String, BigInteger
-from app.db.models.base import IdMixins, TimeMixins
 from typing import Any
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
+from app.db.models.base import IdMixins, TimeMixins
+from app.db.models.user import User
+
 
 class WorkExperienceResume(IdMixins, TimeMixins):
     __tablename__ = "work_experience_resume"
 
-    work_experience: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable = False)
+    work_experience: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
 
     # Relationships
-    user_id: Mapped[User] = mapped_column(ForeignKey("users.id"))
-    user: Mapped[User] = relationship(User, back_populates = "work_experience_resume")
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    user: Mapped["User"] = relationship("User", back_populates="work_experience_resume")
 
     def __str__(self):
-        return self.title
+        return f"WorkExperienceResume(user_id={self.user_id})"
