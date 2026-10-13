@@ -25,3 +25,11 @@ class User(IdMixins, TimeMixins):
     user_sessions: Mapped["UserSession"] = relationship("UserSession", back_populates="user")
     user_info: Mapped["UserInformation"] = relationship("UserInformation", back_populates="user")
     role: Mapped["Role"] = relationship("Role", back_populates="user")
+
+    # Resume Related Information
+    personal_info_resume: Mapped["PersonalInfoResume"] = relationship("PersonalInfoResume", back_populates= "user")
+    professional_summary_resume: Mapped["ProfessionalSummaryResume"] = relationship("ProfessionalSummaryResume",  back_populates= "user")
+    educational_info_resume: Mapped["EducationalInfoResume"] = relationship("EducationalInfoResume", uselist = True, back_populates= "user")
+    work_experience_resume: Mapped["WorkExperienceResume"] = relationship("WorkExperienceResume", uselist = True, back_populates= "user")
+    skills_resume: Mapped["SkillResume"] = relationship("SkillResume", uselist = True, back_populates= "user")
+    projects_info_resume: Mapped["ProjectInfoResume"] = relationship("ProjectInfoResume", uselist = True, back_populates= "user")

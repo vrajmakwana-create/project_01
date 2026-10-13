@@ -51,5 +51,5 @@ async def reset_password(payload: UserRefreshToken, request:Request, db: Session
 async def test_role(user = Depends(current_user)):
     return success_response(
         status_code= 200,
-        msg= "kdk"
+        msg= "Done"
     )
