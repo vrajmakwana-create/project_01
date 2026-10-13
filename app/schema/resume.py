@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
@@ -71,8 +72,10 @@ class ProjectsInfoSchema(BaseModel):
 
 # Skill Schema
 class SkillSchema(BaseModel):
-    name: str
-    rate_skill: Optional[float] = None
+    skills: list[str] 
+    user_id: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes= True)
 
 
 # DATABASE MODELS SCHEMA
