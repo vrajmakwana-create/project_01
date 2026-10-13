@@ -20,10 +20,10 @@ class PersonalInfoResume(IdMixins, TimeMixins):
     github: Mapped[str] = mapped_column(String, nullable=False)
     linkedin: Mapped[str] = mapped_column(String, nullable=False)
 
-    user_id: Mapped[User] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     
     # Relationships
-    user: Mapped[User] = relationship(User, back_populates = "personal_info_resume")
+    user: Mapped["User"] = relationship("User", back_populates="personal_info_resume")
 
     def __str__(self):
         return self.first_name + " " + self.last_name

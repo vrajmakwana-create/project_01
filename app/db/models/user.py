@@ -10,7 +10,7 @@ class User(IdMixins, TimeMixins):
 
     first_name: Mapped[str] = mapped_column(String, nullable=True, default=None)
     last_name: Mapped[str] = mapped_column(String, nullable=True, default=None)
-    email: Mapped[str] = mapped_column(String, nullable=False)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     password: Mapped[str] = mapped_column(String, nullable=True, default=None)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
     otp: Mapped[int] = mapped_column(Integer, nullable=True, default=None)

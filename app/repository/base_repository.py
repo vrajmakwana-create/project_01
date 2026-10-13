@@ -1,54 +1,60 @@
 """
-Base repository class with common CRUD operations.
+Base repository class with asynchronous CRUD operations using SQLAlchemy 2.0 select.
 """
 
 from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 ModelType = TypeVar("ModelType")
 
 
 class BaseRepository(Generic[ModelType]):
-    """Base repository providing common CRUD operations."""
+    """Base repository providing asynchronous CRUD operations."""
 
-    def __init__(self, model: Type[ModelType], db: Session):
-        super().__init__()
+    def __init__(self, model: Type[ModelType], db: AsyncSession):
         self.model = model
         self.db = db
 
-    def get(self, id: str) -> Optional[ModelType]:
-        return self.db.query(self.model).filter(self.model.id == id, self.model.is_active == True, self.model.is_deleted == False).first()
+    async def get(self, id: str, active_only: bool = True) -> Optional[ModelType]:
+        stmt = select(self.model).where(self.model.id == id)
+        if hasattr(self.model, "is_deleted"):
+            stmt = stmt.where(self.model.is_deleted == False)
+        if active_only and hasattr(self.model, "is_active"):
+            stmt = stmt.where(self.model.is_active == True)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
-    def get_by_field(self, field_name: str, value: Any) -> Optional[ModelType]:
+    async def get_by_field(self, field_name: str, value: Any, active_only: bool = True) -> Optional[ModelType]:
         if not hasattr(self.model, field_name):
             raise ValueError(f"Invalid model field: {field_name}")
 
-        return (
-            self.db.query(self.model)
-            .filter(
-                getattr(self.model, field_name) == value,
-                self.model.is_deleted == False,
-                self.model.is_active == True
-            )
-            .first()
-        )
+        stmt = select(self.model).where(getattr(self.model, field_name) == value)
+        if hasattr(self.model, "is_deleted"):
+            stmt = stmt.where(self.model.is_deleted == False)
+        if active_only and hasattr(self.model, "is_active"):
+            stmt = stmt.where(self.model.is_active == True)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
-    def get_all(
-        self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None
+    async def get_all(
+        self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None, active_only: bool = True
     ) -> List[ModelType]:
-        query = self.db.query(self.model)
+        stmt = select(self.model)
+        if hasattr(self.model, "is_deleted"):
+            stmt = stmt.where(self.model.is_deleted == False)
+        if active_only and hasattr(self.model, "is_active"):
+            stmt = stmt.where(self.model.is_active == True)
         if filters:
             for field, value in filters.items():
                 if hasattr(self.model, field):
-                    query = query.filter(
-                        getattr(self.model, field) == value,
-                        self.model.is_active == True,
-                        self.model.is_deleted == False,
-                    )
-        return query.offset(skip).limit(limit).all()
+                    stmt = stmt.where(getattr(self.model, field) == value)
+        stmt = stmt.offset(skip).limit(limit)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
-    def create(self, obj_in: Union[Dict[str, Any], BaseModel]) -> ModelType:
+    async def create(self, obj_in: Union[Dict[str, Any], BaseModel]) -> ModelType:
         if isinstance(obj_in, BaseModel):
             data = obj_in.model_dump()
         else:
@@ -56,23 +62,24 @@ class BaseRepository(Generic[ModelType]):
 
         db_obj = self.model(**data)
         self.db.add(db_obj)
-        self.db.commit()
-        self.db.refresh(db_obj)
+        await self.db.commit()
+        await self.db.refresh(db_obj)
         return db_obj
 
-    def update(self, db_obj: ModelType, obj_in: Dict[str, Any]) -> ModelType:
+    async def update(self, db_obj: ModelType, obj_in: Dict[str, Any]) -> ModelType:
         for field, value in obj_in.items():
             if hasattr(db_obj, field):
                 setattr(db_obj, field, value)
-        self.db.flush()
-        self.db.commit()
+        await self.db.flush()
+        await self.db.commit()
+        await self.db.refresh(db_obj)
         return db_obj
 
-    def delete(self, id: str) -> bool:
-        obj = self.get(id)
+    async def delete(self, id: str) -> bool:
+        obj = await self.get(id, active_only=False)
         if not obj:
             return False
-        self.db.delete(obj)
-        self.db.flush()
-        self.db.commit()
+        await self.db.delete(obj)
+        await self.db.flush()
+        await self.db.commit()
         return True

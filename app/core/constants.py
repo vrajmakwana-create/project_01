@@ -10,5 +10,5 @@ class Roles:
     EMPLOYEE = "employee"
     USER = "user"
 
-# RESUME FILE SIZE
-RESUME_FILE_SIZE = 100
+# RESUME FILE SIZE IN MB
+RESUME_FILE_SIZE = 10

@@ -41,8 +41,8 @@ class ErrorMessage:
     PERSONAL_INFO__NOT_FOUND = "personal information not found!"
     PROFESSIONAL_SUMMARY_ALREADY_EXIST = "professional summary already exist!"
     PROFESSIONAL_SUMMARY_NOT_FOUND = "professional summary not found!"
-
     SKILLS_NOT_FOUND = "Skills not found!"
     SKILLS_ALREADY_EXISTS = "Skills Already Exists"
+    
 class LoggerMessage:
     ExpiredSignatureError_Logtext = "user_id :: {user_id} & error :: {e}"

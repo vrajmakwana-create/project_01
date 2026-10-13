@@ -11,10 +11,10 @@ class ProfessionalSummaryResume(IdMixins, TimeMixins):
     summary: Mapped[str] = mapped_column(String, nullable=False)
     is_original: Mapped[bool] = mapped_column(Boolean, nullable = True, default=False)
 
-    user_id: Mapped[User] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     
     # Relationships
-    user: Mapped[User] = relationship(User, back_populates = "professional_summary_resume")
+    user: Mapped["User"] = relationship("User", back_populates="professional_summary_resume")
 
     def __str__(self):
         return self.summary

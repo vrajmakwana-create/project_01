@@ -1,24 +1,15 @@
-from select import select
-from app.core import message
-from fastapi import UploadFile
-from app.repository import base_repository
-from fastapi import HTTPException, Request, status as http_status
-from sqlalchemy.orm import Session
+import re
+import uuid
+from pathlib import Path
+from fastapi import UploadFile, HTTPException, Request, status as http_status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.utils import generate_otp, get_unix_time, send_email_verification_email
-from app.core.constants import (
-    RESUME_FILE_SIZE
-)
+from app.core.constants import RESUME_FILE_SIZE
 from app.core.exception import ServerException
 from app.core.logger import get_logger
 from app.core.message import ErrorMessage, SuccessMessage
 from app.core.response import success_response
-from app.db.models.user import User
-from app.repository.role_repository import RoleRepository
 from app.repository.user_repository import UserRepository
-from app.repository.user_session_repository import UserSessionRepository
-from app.core.hash import verify_password
-from app.core.jwt import generate_token, verify_token
 from app.schema.resume import PersonalInfoSchema, ProfessionalSummarySchema, SkillSchema
 from app.repository.personal_info_resume_repository import PersonalInfoResumeRepository
 from app.repository.professional_summary_resume_repository import ProfessionalSummaryResumeRepository
@@ -27,12 +18,11 @@ from app.repository.skill_resume_repository import SkillResumeRepository
 from app.repository.project_info_resume_repository import ProjectInfoResumeRepository
 from app.repository.work_experience_resume_repository import WorkExperienceResumeRepository
 
-
 logger = get_logger(__name__)
 
 
 class ResumeService:
-    def __init__(self, request: Request, db: Session):
+    def __init__(self, request: Request, db: AsyncSession):
         self.request = request
         self.db = db
         self.user_repository = UserRepository(db)
@@ -51,31 +41,52 @@ class ResumeService:
             self.skill_resume_repo
         )
 
-    async def upload_resume(self, user_id: int, file: UploadFile):
+    async def upload_resume(self, user_id: str, file: UploadFile):
         try:
-            # Check user existance
-            self.resume_service_utils.check_user_exist(user_id)
+            # Check user existence
+            await self.resume_service_utils.check_user_exist(user_id)
             
-            # Check File Size
-            if file.size / 1000 > RESUME_FILE_SIZE:
+            # Read file content asynchronously
+            content = await file.read()
+
+            # Check File Size (RESUME_FILE_SIZE in MB)
+            max_size_bytes = RESUME_FILE_SIZE * 1024 * 1024
+            if len(content) > max_size_bytes:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail=f"File size should be less than {RESUME_FILE_SIZE}MB",
                 )
             
             # Check File Type
-            if file.content_type != "application/pdf":
+            is_pdf = (file.content_type == "application/pdf") or (
+                bool(file.filename and file.filename.lower().endswith(".pdf"))
+            )
+            if not is_pdf:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail="File type should be PDF",
                 )
             
-            # Save File
-            file_name = file.filename
-            file_path = f"D:/Vraj Development/Projects/01_project/resume/{user_id + file_name}"
-            with open(file_path, "wb") as f:
-                f.write(file.file.read())
-            
+            # Save file safely to project uploads directory
+            upload_dir = Path("uploads/resumes")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+
+            raw_name = Path(file.filename or "resume.pdf").name
+            safe_name = re.sub(r"[^\w\-.]", "_", raw_name)
+            unique_filename = f"{user_id}_{uuid.uuid4().hex[:8]}_{safe_name}"
+            target_path = upload_dir / unique_filename
+
+            target_path.write_bytes(content)
+
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg="Resume uploaded successfully",
+                data={
+                    "filename": unique_filename,
+                    "file_path": str(target_path).replace("\\", "/"),
+                    "size_bytes": len(content),
+                },
+            )
             
         except HTTPException:
             raise
@@ -85,7 +96,7 @@ class ResumeService:
     async def save_personal_info(self, personal_info, user_id: str):
         try:
             # Check User Information already exists
-            is_personal_info_exist, _ = self.resume_service_utils.check_personal_info_exist(user_id)
+            is_personal_info_exist, _ = await self.resume_service_utils.check_personal_info_exist(user_id)
 
             if is_personal_info_exist:
                 raise HTTPException(
@@ -103,8 +114,8 @@ class ResumeService:
                 }
             )
 
-            # Create DB Record
-            personal_info_obj = self.personal_info_resume_repo.create(
+            # Create DB Record asynchronously
+            personal_info_obj = await self.personal_info_resume_repo.create(
                 personal_info_data
             )
 
@@ -121,7 +132,7 @@ class ResumeService:
 
     async def update_personal_info(self, personal_info, user_id: str):
         try:
-            is_personal_info_exist, personal_info_data = self.resume_service_utils.check_personal_info_exist(user_id)
+            is_personal_info_exist, personal_info_data = await self.resume_service_utils.check_personal_info_exist(user_id)
 
             if not is_personal_info_exist and not personal_info_data:
                 raise HTTPException(
@@ -131,8 +142,8 @@ class ResumeService:
 
             new_personal_info_data = personal_info.model_dump(exclude_none=True)
 
-            # Update to DB
-            result = self.personal_info_resume_repo.update(
+            # Update to DB asynchronously
+            result = await self.personal_info_resume_repo.update(
                 personal_info_data, new_personal_info_data
             )
 
@@ -149,11 +160,11 @@ class ResumeService:
 
     async def save_professional_summary(self, professional_summary, user_id: str):
         try:
-            # Check user existance
-            self.resume_service_utils.check_user_exist(user_id)
+            # Check user existence
+            await self.resume_service_utils.check_user_exist(user_id)
 
             # Check Professional Summary for user_id
-            is_professional_summary_exist, _ = self.resume_service_utils.check_professional_original_summary_exist(
+            is_professional_summary_exist, _ = await self.resume_service_utils.check_professional_original_summary_exist(
                 user_id
             )
 
@@ -174,8 +185,8 @@ class ResumeService:
                 }
             )
 
-            # Record professional summary 
-            result = self.professional_summary_resume_repo.create(
+            # Record professional summary asynchronously
+            result = await self.professional_summary_resume_repo.create(
                 professional_summary_data
             )
 
@@ -192,7 +203,7 @@ class ResumeService:
 
     async def update_professional_summary(self, professional_summary, user_id: str):
         try:
-            is_professional_summary_exist, summary_data = self.resume_service_utils.check_professional_original_summary_exist(
+            is_professional_summary_exist, summary_data = await self.resume_service_utils.check_professional_original_summary_exist(
                 user_id
             )
 
@@ -202,14 +213,14 @@ class ResumeService:
                     detail = ErrorMessage.PROFESSIONAL_SUMMARY_NOT_FOUND
                 )
 
-            summary_data.summary = professional_summary.summary
-            self.professional_summary_resume_repo.db.commit()
-            self.professional_summary_resume_repo.db.refresh(summary_data)
+            result = await self.professional_summary_resume_repo.update(
+                summary_data, {"summary": professional_summary.summary}
+            )
 
             return success_response(
                 status_code= http_status.HTTP_200_OK,
                 msg=SuccessMessage.PROFESSIONAL_SUMMARY_UPDATED_SUCCESSFULLY,
-                data= ProfessionalSummarySchema.model_validate(summary_data)
+                data= ProfessionalSummarySchema.model_validate(result)
             )
             
         except HTTPException:
@@ -217,10 +228,9 @@ class ResumeService:
         except Exception as e:
             raise ServerException(message = str(e))
 
-    
     async def save_skills(self, skills_payload: SkillSchema, user_id: str):
         try:
-            is_skill_exist, _ = self.resume_service_utils.check_skills_exist(user_id)
+            is_skill_exist, _ = await self.resume_service_utils.check_skills_exist(user_id)
 
             if is_skill_exist:
                 raise HTTPException(
@@ -237,7 +247,7 @@ class ResumeService:
                 }
             )
 
-            result = self.skill_resume_repo.create(
+            result = await self.skill_resume_repo.create(
                 skill_data
             )
 
@@ -254,7 +264,7 @@ class ResumeService:
             
     async def update_skills(self, skills_payload: SkillSchema, user_id: str):
         try:
-            is_skill_exist, skills_record = self.resume_service_utils.check_skills_exist(user_id)
+            is_skill_exist, skills_record = await self.resume_service_utils.check_skills_exist(user_id)
 
             if not is_skill_exist or not skills_record:
                 raise HTTPException(
@@ -264,8 +274,8 @@ class ResumeService:
 
             skill_data = skills_payload.model_dump()
 
-            # Update the Skill Record Db Object with new skills
-            result = self.skill_resume_repo.update(
+            # Update the Skill Record Db Object asynchronously
+            result = await self.skill_resume_repo.update(
                 skills_record, {"skills": skill_data.get("skills", [])}
             )
 
@@ -279,6 +289,7 @@ class ResumeService:
             raise
         except Exception as e:
             raise ServerException(message = str(e))
+
 
 class ResumeServiceUtils:
 
@@ -295,16 +306,16 @@ class ResumeServiceUtils:
         self.skills_repo = skills_repo
 
     # Utils Methods
-    def check_user_exist(self, user_id):
-        user = self.user_repository.get(user_id)
+    async def check_user_exist(self, user_id):
+        user = await self.user_repository.get(user_id)
         if not user:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=ErrorMessage.USER_NOT_FOUND,
             )
     
-    def check_personal_info_exist(self, user_id):
-        is_exist = self.personal_info_repo.get_by_field(
+    async def check_personal_info_exist(self, user_id):
+        is_exist = await self.personal_info_repo.get_by_field(
             "user_id", user_id,
         )
 
@@ -312,8 +323,8 @@ class ResumeServiceUtils:
             return True, is_exist
         return False, None
 
-    def check_professional_original_summary_exist(self, user_id):
-        is_exist = self.professional_summary_repo.get_all(
+    async def check_professional_original_summary_exist(self, user_id):
+        is_exist = await self.professional_summary_repo.get_all(
             filters = { 
                 "user_id": user_id,
                 "is_original": True
@@ -324,8 +335,8 @@ class ResumeServiceUtils:
             return True, is_exist[0]
         return False, None
     
-    def check_skills_exist(self, user_id):
-        skills = self.skills_repo.get_all(
+    async def check_skills_exist(self, user_id):
+        skills = await self.skills_repo.get_all(
             filters = {
                 "user_id": user_id,
                 "is_original": True

@@ -1,6 +1,5 @@
-from app.repository import base_repository
 from fastapi import HTTPException, Request, status as http_status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.utils import generate_otp, get_unix_time, send_email_verification_email
 from app.core.constants import (
@@ -36,7 +35,7 @@ logger = get_logger(__name__)
 
 
 class UserService:
-    def __init__(self, request: Request, db: Session):
+    def __init__(self, request: Request, db: AsyncSession):
         self.request = request
         self.db = db
         self.user_repo = UserRepository(self.db)
@@ -50,7 +49,7 @@ class UserService:
             last_name = payload.last_name
             full_name = f"{first_name} {last_name}"
 
-            user_detail = self.user_repo.get_by_field("email", email)
+            user_detail = await self.user_repo.get_by_field("email", email, active_only=False)
 
             if user_detail and user_detail.is_verified:
                 raise HTTPException(
@@ -58,7 +57,14 @@ class UserService:
                     detail=ErrorMessage.USER_ALREADY_EXIST,
                 )
             elif user_detail and not user_detail.is_verified:
-                await send_email_verification_email(email, full_name)
+                new_otp = generate_otp()
+                new_expiry = get_unix_time() + (5 * 60 * 1000)
+                user_detail.otp = new_otp
+                user_detail.otp_expiry = new_expiry
+                await self.db.commit()
+                await self.db.refresh(user_detail)
+
+                await send_email_verification_email(email, full_name, new_otp, new_expiry)
                 return success_response(
                     status_code=http_status.HTTP_200_OK,
                     msg=SuccessMessage.USER_VERIFICATION_EMAIL_SEND,
@@ -77,7 +83,7 @@ class UserService:
                 email, full_name, user_data.get("otp"), user_data.get("otp_expiry")
             )
 
-            role_detail = self.role_repo.get_by_field("role_name", Roles.EMPLOYEE)
+            role_detail = await self.role_repo.get_by_field("role_name", Roles.EMPLOYEE)
             if not role_detail:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -94,8 +100,8 @@ class UserService:
 
             new_user = User(**user_data)
             self.db.add(new_user)
-            self.db.commit()
-            self.db.refresh(new_user)
+            await self.db.commit()
+            await self.db.refresh(new_user)
 
             response_data = UserRegistrationResponse.model_validate(new_user).model_dump()
 
@@ -114,7 +120,7 @@ class UserService:
             user_id = payload.user_id
             otp = payload.otp
 
-            user = self.user_repo.get(user_id)
+            user = await self.user_repo.get(user_id, active_only=False)
             if not user:
                 raise HTTPException(
                     status_code=http_status.HTTP_404_NOT_FOUND,
@@ -128,7 +134,7 @@ class UserService:
                 )
 
             current_time = get_unix_time()
-            if user.otp_expiry < current_time:
+            if user.otp_expiry and user.otp_expiry < current_time:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail=ErrorMessage.OTP_EXPIRED,
@@ -143,8 +149,8 @@ class UserService:
             user.is_verified = True
             user.is_active = True
 
-            self.db.commit()
-            self.db.refresh(user)
+            await self.db.commit()
+            await self.db.refresh(user)
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -162,7 +168,7 @@ class UserService:
             password = payload.password
             device_id = payload.device_id
 
-            user = self.user_repo.get_by_field("email", email)
+            user = await self.user_repo.get_by_field("email", email, active_only=False)
             if not user:
                 raise HTTPException(
                     status_code=http_status.HTTP_404_NOT_FOUND,
@@ -193,13 +199,13 @@ class UserService:
                 token_payload, expiry_time_in_min=JWT_REFRESH_TOKEN_EXPIRY_TIME
             )
 
-            # Create Session Record 
+            # Store / Update Active User Session asynchronously
             user_session_data = {
                 "user_id": user.id,
                 "session": access_token,
                 "refresh_token": refresh_token
             }
-            self.user_session_repo.add_user_session(user_session_data)
+            await self.user_session_repo.add_user_session(user_session_data)
 
             response_data = UserLoginResponse(
                 user=UserDetail.model_validate(user),
@@ -219,7 +225,7 @@ class UserService:
 
     async def change_password(self, payload: UserChangePassword, user_id: str):
         try:
-            user = self.user_repo.get(user_id)
+            user = await self.user_repo.get(user_id)
             if not user:
                 raise HTTPException(
                     status_code=http_status.HTTP_404_NOT_FOUND,
@@ -233,8 +239,14 @@ class UserService:
                 )
 
             user.password = payload.new_password
-            self.db.commit()
-            self.db.refresh(user)
+
+            # Invalidate all user sessions upon password change for security
+            user_sessions = await self.user_session_repo.get_all(filters={"user_id": user_id}, active_only=False)
+            for session_item in user_sessions:
+                await self.db.delete(session_item)
+
+            await self.db.commit()
+            await self.db.refresh(user)
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -249,7 +261,7 @@ class UserService:
     async def refresh_token(self, payload: UserRefreshToken):
         try:
             refresh_token = payload.refresh_token
-            user_session = self.user_session_repo.get_by_field("refresh_token", refresh_token)
+            user_session = await self.user_session_repo.get_by_field("refresh_token", refresh_token)
 
             if not user_session:
                 raise HTTPException(
@@ -258,31 +270,31 @@ class UserService:
                 )
             
             # Check Expiry of Refresh Token
-            payload = verify_token(refresh_token)
+            payload_data = verify_token(refresh_token)
             
             token_payload = {
-                "user_id": str(payload["user_id"]),
-                "role_id": str(payload["role_id"]),
+                "user_id": str(payload_data["user_id"]),
+                "role_id": str(payload_data["role_id"]),
             }
 
             access_token = generate_token(
                 token_payload, expiry_time_in_min=JWT_ACCESS_TOKEN_EXPIRY_TIME
             )
-            refresh_token = generate_token(
+            refresh_token_new = generate_token(
                 token_payload, expiry_time_in_min=JWT_REFRESH_TOKEN_EXPIRY_TIME
             )
 
             user_session.session = access_token
-            user_session.refresh_token = refresh_token
-            self.db.commit()
-            self.db.refresh(user_session)
+            user_session.refresh_token = refresh_token_new
+            await self.db.commit()
+            await self.db.refresh(user_session)
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
                 msg=SuccessMessage.USER_SESSION_REFRESHED_SUCCESSFULLY,
                 data=UserRefreshTokenResponse.model_validate({
                     "access_token": access_token,
-                    "refresh_token": refresh_token
+                    "refresh_token": refresh_token_new
                 })
             )
         except HTTPException:
