@@ -15,9 +15,23 @@ class SuccessMessage:
 
     PERSONAL_INFORMATION_SAVED_SUCCESSFULLY = "Personal information Saved Successfully!"
     PERSONAL_INFORMATION_UPDATED_SUCCESSFULLY = "Personal information Updated Successfully!"
+    PERSONAL_INFORMATION_DELETED_SUCCESSFULLY = "Personal information Deleted Successfully!"
     PROFESSIONAL_SUMMARY_SAVED_SUCCESSFULLY = "Professional Summary Saved Successfully!"
     PROFESSIONAL_SUMMARY_UPDATED_SUCCESSFULLY = "Professional Summary Updated Successfully!"
+    PROFESSIONAL_SUMMARY_DELETED_SUCCESSFULLY = "Professional Summary Deleted Successfully!"
     SKILLS_SAVED_SUCCESSFULLY = "Skills Saved Successfully!"
+    SKILLS_UPDATED_SUCCESSFULLY = "Skills Updated Successfully!"
+    SKILLS_DELETED_SUCCESSFULLY = "Skills Deleted Successfully!"
+    EDUCATIONAL_INFO_SAVED_SUCCESSFULLY = "Educational information Saved Successfully!"
+    EDUCATIONAL_INFO_UPDATED_SUCCESSFULLY = "Educational information Updated Successfully!"
+    EDUCATIONAL_INFO_DELETED_SUCCESSFULLY = "Educational information Deleted Successfully!"
+    WORK_EXPERIENCE_SAVED_SUCCESSFULLY = "Work experience Saved Successfully!"
+    WORK_EXPERIENCE_UPDATED_SUCCESSFULLY = "Work experience Updated Successfully!"
+    WORK_EXPERIENCE_DELETED_SUCCESSFULLY = "Work experience Deleted Successfully!"
+    PROJECTS_INFO_SAVED_SUCCESSFULLY = "Projects information Saved Successfully!"
+    PROJECTS_INFO_UPDATED_SUCCESSFULLY = "Projects information Updated Successfully!"
+    PROJECTS_INFO_DELETED_SUCCESSFULLY = "Projects information Deleted Successfully!"
+    RESUME_FETCHED_SUCCESSFULLY = "Resume fetched successfully!"
 
 class ErrorMessage:
     TOKEN_EXPIRE = "Token Expired!"
@@ -43,6 +57,13 @@ class ErrorMessage:
     PROFESSIONAL_SUMMARY_NOT_FOUND = "professional summary not found!"
     SKILLS_NOT_FOUND = "Skills not found!"
     SKILLS_ALREADY_EXISTS = "Skills Already Exists"
+    EDUCATIONAL_INFO_ALREADY_EXISTS = "Educational information already exists!"
+    EDUCATIONAL_INFO_NOT_FOUND = "Educational information not found!"
+    WORK_EXPERIENCE_ALREADY_EXISTS = "Work experience already exists!"
+    WORK_EXPERIENCE_NOT_FOUND = "Work experience not found!"
+    PROJECTS_INFO_ALREADY_EXISTS = "Projects information already exists!"
+    PROJECTS_INFO_NOT_FOUND = "Projects information not found!"
+    RESUME_NOT_FOUND = "Resume not found!"
     
 class LoggerMessage:
     ExpiredSignatureError_Logtext = "user_id :: {user_id} & error :: {e}"
