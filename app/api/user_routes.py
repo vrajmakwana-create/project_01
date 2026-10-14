@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import RoleCheck, PermissionCheck, current_user
@@ -18,8 +18,13 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 
 @router.post("/email-signup")
-async def email_signup(payload: UserRegistration, request: Request, db: AsyncSession = Depends(get_db)):
-    user_service = UserService(request, db)
+async def email_signup(
+    payload: UserRegistration,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    user_service = UserService(request, db, background_tasks=background_tasks)
     return await user_service.register_user(payload)
 
 

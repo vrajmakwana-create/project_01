@@ -1,4 +1,5 @@
-from fastapi import HTTPException, Request, status as http_status
+from typing import Optional
+from fastapi import BackgroundTasks, HTTPException, Request, status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.utils import generate_otp, get_unix_time, send_email_verification_email
@@ -35,12 +36,30 @@ logger = get_logger(__name__)
 
 
 class UserService:
-    def __init__(self, request: Request, db: AsyncSession):
+    def __init__(
+        self,
+        request: Request,
+        db: AsyncSession,
+        background_tasks: Optional[BackgroundTasks] = None,
+    ):
         self.request = request
         self.db = db
+        self.background_tasks = background_tasks
         self.user_repo = UserRepository(self.db)
         self.role_repo = RoleRepository(self.db)
         self.user_session_repo = UserSessionRepository(self.db)
+
+    def _dispatch_background_task(self, func, *args, **kwargs):
+        """Dispatches a heavy task in the background using FastAPI BackgroundTasks or asyncio loop."""
+        if self.background_tasks:
+            self.background_tasks.add_task(func, *args, **kwargs)
+        else:
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(func(*args, **kwargs))
+            except RuntimeError:
+                logger.warning("No running event loop available to dispatch background task.")
 
     async def register_user(self, payload: UserRegistration):
         try:
@@ -64,23 +83,29 @@ class UserService:
                 await self.db.commit()
                 await self.db.refresh(user_detail)
 
-                await send_email_verification_email(email, full_name, new_otp, new_expiry)
+                # Dispatch heavy email task to background
+                self._dispatch_background_task(
+                    send_email_verification_email,
+                    email=email,
+                    full_name=full_name,
+                    otp=new_otp,
+                    otp_expiry=new_expiry,
+                )
+
                 return success_response(
                     status_code=http_status.HTTP_200_OK,
                     msg=SuccessMessage.USER_VERIFICATION_EMAIL_SEND,
                     data=UserRegistrationResponse.model_validate(user_detail).model_dump(),
                 )
 
+            otp = generate_otp()
+            otp_expiry = get_unix_time() + (5 * 60 * 1000)
             user_data = payload.model_dump()
             user_data.update(
                 {
-                    "otp_expiry": get_unix_time() + (5 * 60 * 1000),
-                    "otp": generate_otp(),
+                    "otp_expiry": otp_expiry,
+                    "otp": otp,
                 }
-            )
-
-            await send_email_verification_email(
-                email, full_name, user_data.get("otp"), user_data.get("otp_expiry")
             )
 
             role_detail = await self.role_repo.get_by_field("role_name", Roles.EMPLOYEE)
@@ -102,6 +127,15 @@ class UserService:
             self.db.add(new_user)
             await self.db.commit()
             await self.db.refresh(new_user)
+
+            # Dispatch heavy email task to background
+            self._dispatch_background_task(
+                send_email_verification_email,
+                email=email,
+                full_name=full_name,
+                otp=otp,
+                otp_expiry=otp_expiry,
+            )
 
             response_data = UserRegistrationResponse.model_validate(new_user).model_dump()
 

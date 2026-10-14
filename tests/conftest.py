@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock, patch
 import pytest
 import uuid
 from httpx import AsyncClient, ASGITransport
@@ -10,6 +11,14 @@ from app.db.models.role import Role
 from app.db.models.user_session import UserSession
 from app.core.hash import password_hash
 from app.core.constants import Roles
+
+
+@pytest.fixture(autouse=True)
+def mock_email_service():
+    """Mocks email_service.send_otp_email to isolate tests from real network calls."""
+    with patch("app.services.email_service.email_service.send_otp_email", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = True
+        yield mock_send
 
 
 @pytest.fixture(scope="session")
