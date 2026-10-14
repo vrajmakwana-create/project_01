@@ -58,6 +58,16 @@ def mock_email_service():
         yield mock_send
 
 
+@pytest.fixture(autouse=True)
+def mock_cloudinary_service():
+    """Mocks cloudinary_service.upload_resume to isolate tests from third-party network calls."""
+    with patch(
+        "app.services.cloudinary_service.cloudinary_service.upload_resume",
+        side_effect=lambda content, filename, user_id: f"https://res.cloudinary.com/demo/image/upload/resumes/{user_id}_{filename}",
+    ) as mock_upload:
+        yield mock_upload
+
+
 @pytest.fixture(scope="session")
 def client():
     with TestClient(app) as test_client:

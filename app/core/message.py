@@ -64,6 +64,7 @@ class ErrorMessage:
     PROJECTS_INFO_ALREADY_EXISTS = "Projects information already exists!"
     PROJECTS_INFO_NOT_FOUND = "Projects information not found!"
     RESUME_NOT_FOUND = "Resume not found!"
+    RESUME_ALREADY_UPLOADED = "Resume already uploaded. Multiple uploads are not allowed."
     
 class LoggerMessage:
     ExpiredSignatureError_Logtext = "user_id :: {user_id} & error :: {e}"

@@ -25,6 +25,8 @@ from app.repository.educational_info_resume_repository import EducationalInfoRes
 from app.repository.skill_resume_repository import SkillResumeRepository
 from app.repository.project_info_resume_repository import ProjectInfoResumeRepository
 from app.repository.work_experience_resume_repository import WorkExperienceResumeRepository
+from app.services.gemini_service import gemini_service
+from app.services.cloudinary_service import cloudinary_service
 
 logger = get_logger(__name__)
 
@@ -56,8 +58,15 @@ class ResumeService:
     async def upload_resume(self, user_id: str, file: UploadFile):
         try:
             # Check user existence
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
             
+            # Ensure user cannot upload again if a resume is already uploaded
+            if getattr(user, "resume_url", None):
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorMessage.RESUME_ALREADY_UPLOADED,
+                )
+
             # Read file content asynchronously
             content = await file.read()
 
@@ -79,24 +88,31 @@ class ResumeService:
                     detail="File type should be PDF",
                 )
             
-            # Save file safely to project uploads directory
-            upload_dir = Path("uploads/resumes")
-            upload_dir.mkdir(parents=True, exist_ok=True)
-
             raw_name = Path(file.filename or "resume.pdf").name
             safe_name = re.sub(r"[^\w\-.]", "_", raw_name)
             unique_filename = f"{user_id}_{uuid.uuid4().hex[:8]}_{safe_name}"
-            target_path = upload_dir / unique_filename
 
-            target_path.write_bytes(content)
+            # Upload resume to Cloudinary (with fallback to local storage if not configured)
+            resume_url = cloudinary_service.upload_resume(content, safe_name, user_id)
+
+            # Store resume URL to users table
+            await self.user_repository.update(user, {"resume_url": resume_url})
+
+            # Extract all structured resume information using Google Gemini AI
+            extracted = await gemini_service.extract_resume_from_pdf(content)
+
+            # Persist extracted data to DB tables
+            await self._persist_extracted_resume(user_id, extracted)
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
-                msg="Resume uploaded successfully",
+                msg="Resume uploaded and information extracted successfully",
                 data={
                     "filename": unique_filename,
-                    "file_path": str(target_path).replace("\\", "/"),
+                    "resume_url": resume_url,
+                    "file_path": resume_url,
                     "size_bytes": len(content),
+                    "extracted_data": extracted,
                 },
             )
             
@@ -104,6 +120,98 @@ class ResumeService:
             raise
         except Exception as e:
             raise ServerException(message=str(e))
+
+    async def _persist_extracted_resume(self, user_id: str, extracted: dict):
+        """Persists or updates extracted resume information into respective database tables."""
+        try:
+            # 1. Personal Info
+            p_data = extracted.get("personal_info")
+            if p_data and (p_data.get("first_name") or p_data.get("email")):
+                p_payload = {
+                    "first_name": str(p_data.get("first_name") or ""),
+                    "last_name": str(p_data.get("last_name") or ""),
+                    "email": str(p_data.get("email") or ""),
+                    "phone": str(p_data.get("phone") or ""),
+                    "address": str(p_data.get("address") or ""),
+                    "city": str(p_data.get("city") or ""),
+                    "state": str(p_data.get("state") or ""),
+                    "zip_code": str(p_data.get("zip_code") or ""),
+                    "country": str(p_data.get("country") or ""),
+                    "website": str(p_data.get("website") or ""),
+                    "github": str(p_data.get("github") or ""),
+                    "linkedin": str(p_data.get("linkedin") or ""),
+                    "user_id": user_id,
+                }
+                is_exist, record = await self.resume_service_utils.check_personal_info_exist(user_id)
+                if is_exist and record:
+                    await self.personal_info_resume_repo.update(record, p_payload)
+                else:
+                    await self.personal_info_resume_repo.create(p_payload)
+
+            # 2. Professional Summary
+            s_data = extracted.get("professional_summary")
+            if s_data and s_data.get("summary"):
+                is_exist, record = await self.resume_service_utils.check_professional_original_summary_exist(user_id)
+                if is_exist and record:
+                    await self.professional_summary_resume_repo.update(record, {"summary": s_data["summary"]})
+                else:
+                    await self.professional_summary_resume_repo.create({
+                        "summary": s_data["summary"],
+                        "user_id": user_id,
+                        "is_original": True,
+                    })
+
+            # 3. Skills
+            sk_data = extracted.get("skills")
+            if sk_data and sk_data.get("skills"):
+                is_exist, record = await self.resume_service_utils.check_skills_exist(user_id)
+                if is_exist and record:
+                    await self.skill_resume_repo.update(record, {"skills": sk_data["skills"]})
+                else:
+                    await self.skill_resume_repo.create({
+                        "skills": sk_data["skills"],
+                        "user_id": user_id,
+                        "is_original": True,
+                    })
+
+            # 4. Educational Info
+            edu_data = extracted.get("educational_info")
+            if edu_data and edu_data.get("educations"):
+                is_exist, record = await self.resume_service_utils.check_educational_info_exist(user_id)
+                if is_exist and record:
+                    await self.educational_info_resume_repo.update(record, {"educations": edu_data["educations"]})
+                else:
+                    await self.educational_info_resume_repo.create({
+                        "educations": edu_data["educations"],
+                        "user_id": user_id,
+                    })
+
+            # 5. Work Experience
+            work_data = extracted.get("work_experience")
+            if work_data and work_data.get("work_experience"):
+                is_exist, record = await self.resume_service_utils.check_work_experience_exist(user_id)
+                if is_exist and record:
+                    await self.work_experience_resume_repo.update(record, {"work_experience": work_data["work_experience"]})
+                else:
+                    await self.work_experience_resume_repo.create({
+                        "work_experience": work_data["work_experience"],
+                        "user_id": user_id,
+                    })
+
+            # 6. Projects Info
+            proj_data = extracted.get("projects_info")
+            if proj_data and proj_data.get("projects"):
+                is_exist, record = await self.resume_service_utils.check_projects_info_exist(user_id)
+                if is_exist and record:
+                    await self.project_info_resume_repo.update(record, {"projects": proj_data["projects"]})
+                else:
+                    await self.project_info_resume_repo.create({
+                        "projects": proj_data["projects"],
+                        "user_id": user_id,
+                        "is_original": True,
+                    })
+        except Exception as e:
+            logger.warning(f"Error persisting extracted resume data for user {user_id}: {e}")
 
     # ------------------ Personal Info ------------------
     async def save_personal_info(self, personal_info: PersonalInfoSchema, user_id: str):

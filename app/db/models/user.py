@@ -19,6 +19,7 @@ class User(IdMixins, TimeMixins):
         SEnum(LoginType), nullable=True, default=LoginType.EMAIL.value
     )
     social_id: Mapped[str] = mapped_column(String, nullable=True, default=None)
+    resume_url: Mapped[str] = mapped_column(String, nullable=True, default=None)
 
     role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"), nullable=False)
 

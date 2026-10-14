@@ -36,7 +36,7 @@ async def verify_otp(payload: UserOtpVerify, request: Request, db: AsyncSession 
 
 
 @router.post("/login")
-@limiter.limit("5/minute")
+@limiter.limit("100/minute")
 async def email_login(payload: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
     user_service = UserService(request, db)
     return await user_service.login_user(payload)

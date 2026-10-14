@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -35,10 +36,30 @@ class Settings(BaseSettings):
     BREVO_SENDER_EMAIL: str = "noreply@example.com"
     BREVO_SENDER_NAME: str = "01 Project"
 
+    # Cloudinary Storage Configuration
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+    CLOUDINARY_URL: str = ""
+
+    # Google Gemini AI Configuration
+    GEMINI_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_API_KEY"),
+    )
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
+
+    # Hugging Face Configuration (Optional)
+    HUGGINGFACE_API_TOKEN: str = Field(
+        default="",
+        validation_alias=AliasChoices("HUGGINGFACE_API_TOKEN", "HF_TOKEN", "HUGGINGFACE_HUB_TOKEN"),
+    )
+    HUGGINGFACE_MODEL: str = "Qwen/Qwen2.5-72B-Instruct"
+
     model_config = {
         "env_file": ".env",
         "extra": "ignore",
-        "case_sensitive": True,
+        "case_sensitive": False,
         "enable_decoding": "utf-8",
     }
 
