@@ -2,7 +2,7 @@ import uuid
 from app.db.models.user import User
 
 
-def test_user_signup_and_verify_flow(client, db_session):
+def test_user_signup_and_verify_flow(client, db_session, mock_email_service):
     unique_email = f"signup_{uuid.uuid4().hex[:8]}@example.com"
     signup_payload = {
         "first_name": "John",
@@ -17,6 +17,11 @@ def test_user_signup_and_verify_flow(client, db_session):
     user_data = signup_resp.json()["data"]
     user_id = user_data["id"]
     assert user_data["is_verified"] is False
+
+    # Verify background email verification was executed
+    assert mock_email_service.called
+    call_kwargs = mock_email_service.call_args.kwargs
+    assert call_kwargs["to_email"] == unique_email
 
     # 2. Retrieve OTP from DB (as email is mocked/dev)
     user_in_db = db_session.query(User).filter(User.id == user_id).first()
@@ -43,6 +48,30 @@ def test_user_signup_and_verify_flow(client, db_session):
     login_data = login_resp.json()["data"]
     assert "access_token" in login_data
     assert "refresh_token" in login_data
+
+
+def test_unverified_user_resend_verification_email(client, db_session, mock_email_service):
+    unique_email = f"resend_{uuid.uuid4().hex[:8]}@example.com"
+    payload = {
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "email": unique_email,
+        "password": "SecurePassword123!",
+    }
+
+    # Initial registration (unverified)
+    resp1 = client.post("/api/v1/users/email-signup", json=payload)
+    assert resp1.status_code == 201
+    mock_email_service.reset_mock()
+
+    # Re-registration before verification triggers resending verification email in background
+    resp2 = client.post("/api/v1/users/email-signup", json=payload)
+    assert resp2.status_code == 200
+
+    # Ensure background email dispatch was invoked
+    assert mock_email_service.called
+    call_kwargs = mock_email_service.call_args.kwargs
+    assert call_kwargs["to_email"] == unique_email
 
 
 def test_login_invalid_credentials(client):

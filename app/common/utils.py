@@ -3,6 +3,9 @@ from typing import Optional, Tuple
 from datetime import datetime, timezone
 from pydantic import EmailStr
 from app.services.email_service import email_service
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_unix_time() -> int:
@@ -21,14 +24,18 @@ async def send_email_verification_email(
     otp: Optional[int] = None,
     otp_expiry: Optional[int] = None,
 ) -> Tuple[int, int]:
-    """Sends OTP verification email and returns (otp, otp_expiry)."""
+    """Sends OTP verification email in background and returns (otp, otp_expiry)."""
     if otp is None or otp_expiry is None:
         otp_expiry = get_unix_time() + (5 * 60 * 1000)  # 5 minutes in ms
         otp = generate_otp()
 
-    await email_service.send_otp_email(
-        to_email=email,
-        otp=otp,
-        name=full_name,
-    )
+    try:
+        await email_service.send_otp_email(
+            to_email=email,
+            otp=otp,
+            name=full_name,
+        )
+    except Exception as e:
+        logger.error(f"Error dispatching background verification email to {email}: {e}", exc_info=True)
+
     return otp, otp_expiry
