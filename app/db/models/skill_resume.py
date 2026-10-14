@@ -14,6 +14,7 @@ class SkillResume(IdMixins, TimeMixins):
     # Relationships
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     user: Mapped["User"] = relationship("User", back_populates="skills_resume")
+    job_descriptions: Mapped[list["JobDescription"]] = relationship("JobDescription", back_populates="skills_resume")
 
     def __str__(self):
         return f"SkillResume(user_id={self.user_id})"

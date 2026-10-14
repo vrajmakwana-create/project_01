@@ -446,6 +446,7 @@ def test_upload_resume_pdf(client, test_user):
     data = resp.json()["data"]
     assert "filename" in data
     assert "file_path" in data
+    assert "extracted_data" in data
 
 
 def test_upload_resume_invalid_type(client, test_user):
@@ -456,3 +457,143 @@ def test_upload_resume_invalid_type(client, test_user):
 
     resp = client.post("/api/v1/resume/upload", files=files, headers=headers)
     assert resp.status_code == 400
+
+
+def test_upload_resume_cannot_upload_twice(client, test_user):
+    headers = test_user["headers"]
+
+    fake_pdf_1 = io.BytesIO(b"%PDF-1.4 first upload resume test")
+    files_1 = {"file": ("first_resume.pdf", fake_pdf_1, "application/pdf")}
+
+    resp_1 = client.post("/api/v1/resume/upload", files=files_1, headers=headers)
+    assert resp_1.status_code == 200
+    data_1 = resp_1.json()["data"]
+    assert "resume_url" in data_1
+    assert data_1["resume_url"] is not None
+
+    # Attempt second upload for the same user
+    fake_pdf_2 = io.BytesIO(b"%PDF-1.4 second upload resume test")
+    files_2 = {"file": ("second_resume.pdf", fake_pdf_2, "application/pdf")}
+
+    resp_2 = client.post("/api/v1/resume/upload", files=files_2, headers=headers)
+    assert resp_2.status_code == 400
+    error_msg = resp_2.json().get("msg") or resp_2.json().get("detail", "")
+    assert "already uploaded" in error_msg.lower()
+
+
+
+def test_upload_resume_persists_extracted_info_to_db(client, test_user):
+    headers = test_user["headers"]
+
+    sample_resume_content = (
+        b"%PDF-1.4\n"
+        b"Alex Johnson\n"
+        b"alex.johnson@example.com +1-555-0144\n"
+        b"https://github.com/alexjohnson https://linkedin.com/in/alexjohnson\n"
+        b"Summary: Experienced engineer passionate about Python, FastAPI, and PostgreSQL.\n"
+        b"Skills: Python, FastAPI, PostgreSQL, Docker, Kubernetes\n"
+    )
+    files = {"file": ("alex_resume.pdf", io.BytesIO(sample_resume_content), "application/pdf")}
+
+    resp = client.post("/api/v1/resume/upload", files=files, headers=headers)
+    assert resp.status_code == 200
+    res_data = resp.json()["data"]
+    assert "extracted_data" in res_data
+    assert "Python" in res_data["extracted_data"]["skills"]["skills"]
+
+    # Verify that the extracted information was automatically saved to DB
+    details_resp = client.get("/api/v1/resume/details", headers=headers)
+    assert details_resp.status_code == 200
+    details = details_resp.json()["data"]
+    assert details["personal_info"] is not None
+    assert details["skills"] is not None
+    assert "Python" in details["skills"]["skills"]
+
+
+def test_upload_resume_with_gemini_ai_mock(client, test_user):
+    from unittest.mock import patch, AsyncMock
+
+    headers = test_user["headers"]
+
+    mocked_ai_extraction = {
+        "personal_info": {
+            "first_name": "Elon",
+            "last_name": "Musk",
+            "email": "elon@x.com",
+            "phone": "+1-555-9999",
+            "address": "Boca Chica",
+            "city": "Brownsville",
+            "state": "TX",
+            "zip_code": "78521",
+            "country": "USA",
+            "website": "https://x.com",
+            "github": "https://github.com/elon",
+            "linkedin": "https://linkedin.com/in/elon",
+        },
+        "professional_summary": {
+            "summary": "Founder and lead engineer driving rockets and electric vehicles.",
+        },
+        "skills": {
+            "skills": ["Rocket Engineering", "Python", "Physics", "Autonomous Systems"],
+        },
+        "educational_info": {
+            "educations": [
+                {
+                    "degree": "B.S. in Physics",
+                    "school_name": "University of Pennsylvania",
+                    "start_date": "1992",
+                    "end_date": "1997",
+                }
+            ]
+        },
+        "work_experience": {
+            "work_experience": [
+                {
+                    "job_title": "Chief Engineer",
+                    "company_name": "SpaceX",
+                    "city": "Hawthorne",
+                    "state": "CA",
+                    "country": "USA",
+                    "location_type": "Onsite",
+                    "employment_type": "Full-time",
+                    "is_currently_work_here": True,
+                    "start_date": "2002",
+                    "responsibilities": "Leading Falcon 9 and Starship engineering.",
+                }
+            ]
+        },
+        "projects_info": {
+            "projects": [
+                {
+                    "name": "Starship Launch Vehicle",
+                    "description": "Fully reusable heavy launch vehicle.",
+                    "url": "https://spacex.com/starship",
+                    "start_date": 2016,
+                    "status": "In Progress",
+                    "responsibilities": "Principal Architect",
+                }
+            ]
+        },
+    }
+
+    with patch(
+        "app.services.gemini_service.gemini_service.extract_resume_from_pdf",
+        new_callable=AsyncMock,
+        return_value=mocked_ai_extraction,
+    ):
+        files = {"file": ("elon_resume.pdf", io.BytesIO(b"%PDF-1.4 dummy content"), "application/pdf")}
+        resp = client.post("/api/v1/resume/upload", files=files, headers=headers)
+        assert resp.status_code == 200
+
+        # Verify that all 6 sections were persisted into the DB for this user
+        details_resp = client.get("/api/v1/resume/details", headers=headers)
+        assert details_resp.status_code == 200
+        data = details_resp.json()["data"]
+
+        assert data["personal_info"]["first_name"] == "Elon"
+        assert data["professional_summary"]["summary"] == "Founder and lead engineer driving rockets and electric vehicles."
+        assert "Rocket Engineering" in data["skills"]["skills"]
+        assert data["educational_info"]["educations"][0]["school_name"] == "University of Pennsylvania"
+        assert data["work_experience"]["work_experience"][0]["company_name"] == "SpaceX"
+        assert data["projects_info"]["projects"][0]["name"] == "Starship Launch Vehicle"
+

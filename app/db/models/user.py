@@ -19,6 +19,7 @@ class User(IdMixins, TimeMixins):
         SEnum(LoginType), nullable=True, default=LoginType.EMAIL.value
     )
     social_id: Mapped[str] = mapped_column(String, nullable=True, default=None)
+    resume_url: Mapped[str] = mapped_column(String, nullable=True, default=None)
 
     role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"), nullable=False)
 
@@ -33,3 +34,6 @@ class User(IdMixins, TimeMixins):
     work_experience_resume: Mapped["WorkExperienceResume"] = relationship("WorkExperienceResume", uselist = True, back_populates= "user")
     skills_resume: Mapped["SkillResume"] = relationship("SkillResume", uselist = True, back_populates= "user")
     projects_info_resume: Mapped["ProjectInfoResume"] = relationship("ProjectInfoResume", uselist = True, back_populates= "user")
+    job_descriptions: Mapped[list["JobDescription"]] = relationship(
+        "JobDescription", back_populates="user", cascade="all, delete-orphan"
+    )

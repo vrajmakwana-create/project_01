@@ -17,6 +17,7 @@ from app.db.models.skill_resume import SkillResume
 from app.db.models.educational_info_resume import EducationalInfoResume
 from app.db.models.work_experience_resume import WorkExperienceResume
 from app.db.models.projects_info_resume import ProjectInfoResume
+from app.db.models.job_description import JobDescription
 from app.core.hash import password_hash
 from app.core.constants import Roles
 
@@ -25,6 +26,7 @@ def delete_user_and_related_data(db_session, user_id: str):
     """Deletes a user and all their related resume and session records across all tables."""
     try:
         user_id_str = str(user_id)
+        db_session.query(JobDescription).filter(JobDescription.user_id == user_id_str).delete(synchronize_session=False)
         db_session.query(PersonalInfoResume).filter(PersonalInfoResume.user_id == user_id_str).delete(synchronize_session=False)
         db_session.query(ProfessionalSummaryResume).filter(ProfessionalSummaryResume.user_id == user_id_str).delete(synchronize_session=False)
         db_session.query(SkillResume).filter(SkillResume.user_id == user_id_str).delete(synchronize_session=False)
@@ -56,6 +58,16 @@ def mock_email_service():
     with patch("app.services.email_service.email_service.send_otp_email", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = True
         yield mock_send
+
+
+@pytest.fixture(autouse=True)
+def mock_cloudinary_service():
+    """Mocks cloudinary_service.upload_resume to isolate tests from third-party network calls."""
+    with patch(
+        "app.services.cloudinary_service.cloudinary_service.upload_resume",
+        side_effect=lambda content, filename, user_id: f"https://res.cloudinary.com/demo/image/upload/resumes/{user_id}_{filename}",
+    ) as mock_upload:
+        yield mock_upload
 
 
 @pytest.fixture(scope="session")
