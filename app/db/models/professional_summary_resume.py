@@ -15,6 +15,7 @@ class ProfessionalSummaryResume(IdMixins, TimeMixins):
     
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="professional_summary_resume")
+    job_descriptions: Mapped[list["JobDescription"]] = relationship("JobDescription", back_populates="professional_summary_resume")
 
     def __str__(self):
         return self.summary

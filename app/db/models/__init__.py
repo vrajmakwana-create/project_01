@@ -11,3 +11,4 @@ from app.db.models.skill_resume import SkillResume
 from app.db.models.educational_info_resume import EducationalInfoResume
 from app.db.models.projects_info_resume import ProjectInfoResume
 from app.db.models.work_experience_resume import WorkExperienceResume
+from app.db.models.job_description import JobDescription
