@@ -5,6 +5,7 @@ Static API response and logger messages.
 
 class SuccessMessage:
     SERVER_HEALTHY = "Server is Healthy!"
+    AUTH_SERVER_HEALTHY = "Auth Server is Healthy!"
     RESPONSE_FETCHED_SUCCESSFULLY = "Response Fetched Successfully"
     USER_REGISTERED_SUCCESSFULLY = "User Registered Successfully!"
     USER_VERIFICATION_EMAIL_SEND = "User Verification Email Sent"

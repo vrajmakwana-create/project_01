@@ -1,3 +1,4 @@
+from fastapi import Depends
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from slowapi.errors import RateLimitExceeded
@@ -12,6 +13,7 @@ from app.core.message import SuccessMessage
 from app.core.limiter import limiter
 from app.api.routes import app_router
 from app.db import models
+from app.core.dependecy import current_user
 
 logger = get_logger(__name__)
 
@@ -55,3 +57,11 @@ app.include_router(app_router, prefix="/api/v1")
 @app.get("/health", tags=["System"])
 async def health_check():
     return success_response(msg=SuccessMessage.SERVER_HEALTHY)
+
+@app.get("/server-test")
+async def auth_server_check(
+    user = Depends(current_user)
+):
+    return success_response(
+        msg=SuccessMessage.AUTH_SERVER_HEALTHY
+    )
