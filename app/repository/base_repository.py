@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.common.utils import get_unix_time
+
 ModelType = TypeVar("ModelType")
 
 
@@ -17,21 +19,25 @@ class BaseRepository(Generic[ModelType]):
         self.model = model
         self.db = db
 
-    async def get(self, id: str, active_only: bool = True) -> Optional[ModelType]:
+    async def get(
+        self, id: str, active_only: bool = True, include_deleted: bool = False
+    ) -> Optional[ModelType]:
         stmt = select(self.model).where(self.model.id == id)
-        if hasattr(self.model, "is_deleted"):
+        if not include_deleted and hasattr(self.model, "is_deleted"):
             stmt = stmt.where(self.model.is_deleted == False)
         if active_only and hasattr(self.model, "is_active"):
             stmt = stmt.where(self.model.is_active == True)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def get_by_field(self, field_name: str, value: Any, active_only: bool = True) -> Optional[ModelType]:
+    async def get_by_field(
+        self, field_name: str, value: Any, active_only: bool = True, include_deleted: bool = False
+    ) -> Optional[ModelType]:
         if not hasattr(self.model, field_name):
             raise ValueError(f"Invalid model field: {field_name}")
 
         stmt = select(self.model).where(getattr(self.model, field_name) == value)
-        if hasattr(self.model, "is_deleted"):
+        if not include_deleted and hasattr(self.model, "is_deleted"):
             stmt = stmt.where(self.model.is_deleted == False)
         if active_only and hasattr(self.model, "is_active"):
             stmt = stmt.where(self.model.is_active == True)
@@ -39,10 +45,15 @@ class BaseRepository(Generic[ModelType]):
         return result.scalars().first()
 
     async def get_all(
-        self, skip: int = 0, limit: int = 100, filters: Optional[Dict[str, Any]] = None, active_only: bool = True
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        filters: Optional[Dict[str, Any]] = None,
+        active_only: bool = True,
+        include_deleted: bool = False,
     ) -> List[ModelType]:
         stmt = select(self.model)
-        if hasattr(self.model, "is_deleted"):
+        if not include_deleted and hasattr(self.model, "is_deleted"):
             stmt = stmt.where(self.model.is_deleted == False)
         if active_only and hasattr(self.model, "is_active"):
             stmt = stmt.where(self.model.is_active == True)
@@ -76,10 +87,18 @@ class BaseRepository(Generic[ModelType]):
         return db_obj
 
     async def delete(self, id: str) -> bool:
-        obj = await self.get(id, active_only=False)
+        obj = await self.get(id, active_only=False, include_deleted=False)
         if not obj:
             return False
-        await self.db.delete(obj)
-        await self.db.flush()
+        if hasattr(obj, "is_deleted"):
+            obj.is_deleted = True
+            if hasattr(obj, "is_active"):
+                obj.is_active = False
+            if hasattr(obj, "deleted_at"):
+                obj.deleted_at = get_unix_time()
+            await self.db.flush()
+        else:
+            await self.db.delete(obj)
+            await self.db.flush()
         await self.db.commit()
         return True

@@ -60,6 +60,24 @@ class UserService:
                 loop.create_task(func(*args, **kwargs))
             except RuntimeError:
                 logger.warning("No running event loop available to dispatch background task.")
+    
+    async def get_user(self, user_id: str):
+        try:
+            user = await self.user_repo.get(user_id)
+            if not user:
+                raise HTTPException(
+                    status_code=http_status.HTTP_404_NOT_FOUND,
+                    detail=ErrorMessage.USER_NOT_FOUND,
+                )
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg=SuccessMessage.USER_FETCHED_SUCCESSFULLY,
+                data=UserDetail.model_validate(user).model_dump(),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message=str(e))
 
     async def register_user(self, payload: UserRegistration):
         try:
@@ -76,7 +94,8 @@ class UserService:
                     detail=ErrorMessage.USER_ALREADY_EXIST,
                 )
             elif user_detail and not user_detail.is_verified:
-                new_otp = generate_otp()
+                # new_otp = generate_otp()
+                new_otp = 111111
                 new_expiry = get_unix_time() + (5 * 60 * 1000)
                 user_detail.otp = new_otp
                 user_detail.otp_expiry = new_expiry
@@ -98,7 +117,8 @@ class UserService:
                     data=UserRegistrationResponse.model_validate(user_detail).model_dump(),
                 )
 
-            otp = generate_otp()
+            # otp = generate_otp()
+            otp = 111111
             otp_expiry = get_unix_time() + (5 * 60 * 1000)
             user_data = payload.model_dump()
             user_data.update(

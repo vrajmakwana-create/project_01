@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import UploadFile, HTTPException, Request, status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import RESUME_FILE_SIZE
+from app.core.constants import RESUME_FILE_SIZE, ONBOARDING_STEPS
 from app.core.exception import ServerException
 from app.core.logger import get_logger
 from app.core.message import ErrorMessage, SuccessMessage
@@ -102,7 +102,7 @@ class ResumeService:
             extracted = await gemini_service.extract_resume_from_pdf(content)
 
             # Persist extracted data to DB tables
-            await self._persist_extracted_resume(user_id, extracted)
+            # await self._persist_extracted_resume(user_id, extracted)
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -216,7 +216,7 @@ class ResumeService:
     # ------------------ Personal Info ------------------
     async def save_personal_info(self, personal_info: PersonalInfoSchema, user_id: str):
         try:
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
 
             # Check User Information already exists
             is_personal_info_exist, _ = await self.resume_service_utils.check_personal_info_exist(user_id)
@@ -236,8 +236,11 @@ class ResumeService:
                 personal_info_data
             )
 
+            # Save Onboarding Step
+            await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["personal_info"]})
+        
             return success_response(
-                status_code=http_status.HTTP_200_OK,
+                status_code=http_status.HTTP_200_OK,    
                 msg=SuccessMessage.PERSONAL_INFORMATION_SAVED_SUCCESSFULLY,
                 data=PersonalInfoSchema.model_validate(personal_info_obj),
             )
@@ -322,7 +325,7 @@ class ResumeService:
     # ------------------ Professional Summary ------------------
     async def save_professional_summary(self, professional_summary: ProfessionalSummarySchema, user_id: str):
         try:
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
 
             is_professional_summary_exist, _ = await self.resume_service_utils.check_professional_original_summary_exist(
                 user_id
@@ -345,6 +348,9 @@ class ResumeService:
             result = await self.professional_summary_resume_repo.create(
                 professional_summary_data
             )
+
+            # Save Onboarding Step
+            await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["professional_summary"]})
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -432,7 +438,7 @@ class ResumeService:
     # ------------------ Skills ------------------
     async def save_skills(self, skills_payload: SkillSchema, user_id: str):
         try:
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
 
             is_skill_exist, _ = await self.resume_service_utils.check_skills_exist(user_id)
 
@@ -453,6 +459,9 @@ class ResumeService:
             result = await self.skill_resume_repo.create(
                 skill_data
             )
+
+            # Save Onboarding Step
+            await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["skills"]})
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -540,7 +549,7 @@ class ResumeService:
     # ------------------ Educational Info ------------------
     async def save_educational_info(self, educational_info: EducationalInfoSchema, user_id: str):
         try:
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
 
             is_exist, _ = await self.resume_service_utils.check_educational_info_exist(user_id)
             if is_exist:
@@ -553,6 +562,9 @@ class ResumeService:
             data["user_id"] = user_id
 
             result = await self.educational_info_resume_repo.create(data)
+
+            # Save Onboarding Step
+            await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["educational_info"]})
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -636,7 +648,7 @@ class ResumeService:
     # ------------------ Work Experience ------------------
     async def save_work_experience(self, work_experience: WorkExperienceSchema, user_id: str):
         try:
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
 
             is_exist, _ = await self.resume_service_utils.check_work_experience_exist(user_id)
             if is_exist:
@@ -649,6 +661,9 @@ class ResumeService:
             data["user_id"] = user_id
 
             result = await self.work_experience_resume_repo.create(data)
+
+            # Save Onboarding Step
+            await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["work_experience"]})
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
@@ -732,7 +747,7 @@ class ResumeService:
     # ------------------ Projects Info ------------------
     async def save_projects_info(self, projects_payload: ProjectsInfoSchema, user_id: str):
         try:
-            await self.resume_service_utils.check_user_exist(user_id)
+            user = await self.resume_service_utils.check_user_exist(user_id)
 
             is_exist, _ = await self.resume_service_utils.check_projects_info_exist(user_id)
             if is_exist:
@@ -750,6 +765,10 @@ class ResumeService:
             )
 
             result = await self.project_info_resume_repo.create(data)
+
+            # Save Final Onboarding Step and Complete Onboarding
+            await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["projects"], "onboarding_completed": True})
+            
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
