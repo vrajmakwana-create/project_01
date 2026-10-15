@@ -56,6 +56,8 @@ class UserDetail(BaseModel):
     email: str
     is_verified: bool
     role_id: str
+    step_count: Optional[int] = 0
+    onboarding_completed: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 

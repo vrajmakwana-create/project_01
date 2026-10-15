@@ -33,6 +33,7 @@ class SuccessMessage:
     PROJECTS_INFO_UPDATED_SUCCESSFULLY = "Projects information Updated Successfully!"
     PROJECTS_INFO_DELETED_SUCCESSFULLY = "Projects information Deleted Successfully!"
     RESUME_FETCHED_SUCCESSFULLY = "Resume fetched successfully!"
+    USER_FETCHED_SUCCESSFULLY = "User fetched successfully!"
 
 class ErrorMessage:
     TOKEN_EXPIRE = "Token Expired!"

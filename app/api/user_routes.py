@@ -16,6 +16,10 @@ from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
+@router.get("/me")
+async def get_user(request: Request, db: AsyncSession = Depends(get_db), user = Depends(current_user)):
+    user_service = UserService(request, db)
+    return await user_service.get_user(user.get("user_id"))
 
 @router.post("/email-signup")
 async def email_signup(

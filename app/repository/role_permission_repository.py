@@ -14,7 +14,13 @@ class RolePermissionRepository(BaseRepository[RolePermission]):
         stmt = (
             select(Permission.permission_name)
             .join(RolePermission, RolePermission.permission_id == Permission.id)
-            .where(RolePermission.role_id == role_id)
+            .where(
+                RolePermission.role_id == role_id,
+                RolePermission.is_deleted == False,
+                RolePermission.is_active == True,
+                Permission.is_deleted == False,
+                Permission.is_active == True,
+            )
         )
         result = await self.db.execute(stmt)
         return result.all()

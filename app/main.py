@@ -14,6 +14,7 @@ from app.core.limiter import limiter
 from app.api.routes import app_router
 from app.db import models
 from app.core.dependecy import current_user
+from fastapi.middleware.cors import CORSMiddleware
 
 logger = get_logger(__name__)
 
@@ -28,6 +29,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Rate Limiter setup

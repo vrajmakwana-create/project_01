@@ -20,6 +20,8 @@ class User(IdMixins, TimeMixins):
     )
     social_id: Mapped[str] = mapped_column(String, nullable=True, default=None)
     resume_url: Mapped[str] = mapped_column(String, nullable=True, default=None)
+    step_count: Mapped[int] = mapped_column(Integer, nullable=True, default=0)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
 
     role_id: Mapped[str] = mapped_column(ForeignKey("roles.id"), nullable=False)
 
