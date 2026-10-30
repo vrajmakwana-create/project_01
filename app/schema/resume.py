@@ -245,3 +245,24 @@ class FullResumeSchema(BaseModel):
     projects_info: Optional[ProjectsInfoSchema] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ImproveSummaryRequest(BaseModel):
+    summary: Optional[str] = Field(
+        default=None,
+        description="Current resume summary text to improve and polish. If omitted, the user's saved summary from database will be used.",
+    )
+    tone: Optional[str] = Field(
+        default="executive",
+        description="Desired tone for the resume executive summary (e.g., executive, professional, impactful, concise, technical).",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImproveSummaryResponse(BaseModel):
+    original_summary: str
+    improved_summary: str
+    tone: str
+
+    model_config = ConfigDict(from_attributes=True)

@@ -18,6 +18,8 @@ from app.schema.resume import (
     EducationalInfoSchema,
     WorkExperienceSchema,
     ProjectsInfoSchema,
+    ImproveSummaryRequest,
+    ImproveSummaryResponse,
 )
 from app.repository.personal_info_resume_repository import PersonalInfoResumeRepository
 from app.repository.professional_summary_resume_repository import ProfessionalSummaryResumeRepository
@@ -433,6 +435,43 @@ class ResumeService:
         except HTTPException:
             raise
         except Exception as e:
+            raise ServerException(message=str(e))
+
+
+    async def improve_summary(self, payload: ImproveSummaryRequest, user_id: str):
+        try:
+            await self.resume_service_utils.check_user_exist(user_id)
+
+            summary_text = (payload.summary or "").strip()
+
+            # If user did not provide summary text in payload, check if they have a saved professional summary
+            if not summary_text:
+                is_exist, record = await self.resume_service_utils.check_professional_original_summary_exist(user_id)
+                if is_exist and record and getattr(record, "summary", None):
+                    summary_text = record.summary.strip()
+
+            if not summary_text:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorMessage.SUMMARY_TEXT_REQUIRED,
+                )
+
+            desired_tone = (payload.tone or "executive").strip()
+            result_data = await gemini_service.improve_summary(
+                summary=summary_text,
+                tone=desired_tone,
+            )
+
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg=SuccessMessage.SUMMARY_IMPROVED_SUCCESSFULLY,
+                data= ImproveSummaryResponse.model_validate(result_data),
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error improving summary for user {user_id}: {e}")
             raise ServerException(message=str(e))
 
     # ------------------ Skills ------------------

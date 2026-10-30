@@ -155,6 +155,22 @@ Return ONLY a strict JSON object matching this schema:
 """
 
 
+SUMMARY_IMPROVEMENT_SYSTEM_PROMPT = """You are an elite Executive Resume Writer and Career Branding Specialist.
+Your task is to take a candidate's draft resume summary and desired tone, and transform it into a compelling, polished, high-impact Executive Summary suitable for a top-tier resume.
+
+The output must be returned as a strict JSON object with this exact schema:
+{
+  "improved_summary": "The primary polished executive summary (3-5 impactful sentences highlighting value proposition, core competencies, leadership or execution strength, and measurable impact).",
+  "tone": "The tone applied (e.g., Executive, Professional, Impactful, Technical, Concise, etc.)",
+}
+
+Rules:
+1. Return ONLY a valid JSON object matching the schema.
+2. The summary must be written in professional third-person (or implied first-person without excessive 'I' or 'my').
+3. Maximize action verbs and eliminate fluff or generic clichés.
+4. Strictly reflect the requested tone (e.g., Executive = strategic leadership and organizational impact; Technical = depth in system design, architecture, and technology; Impactful = measurable outcomes and efficiency; Concise = dense, bullet-like clarity).
+"""
+
 class GeminiService:
     def __init__(self):
         pass
@@ -852,6 +868,165 @@ class GeminiService:
             "interview_preparation_tips": tips,
             "tailored_summary": tailored_summary,
             "tailored_skills": tailored_skills,
+        }
+
+
+
+    async def improve_summary(
+        self,
+        summary: str,
+        tone: str = "executive",
+    ) -> Dict[str, Any]:
+        """Improves and polishes a resume summary using Google Gemini models with target tone.
+        Falls back gracefully if the Gemini API call fails.
+        """
+        clean_summary = summary.strip()
+        clean_tone = (tone or "executive").strip()
+        api_key = self.get_api_key()
+        active_model = self.get_model()
+
+        if api_key:
+            masked = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "***"
+            logger.info(
+                f"Improving summary with Google Gemini AI (model={active_model}, tone={clean_tone}, key={masked})"
+            )
+            client = genai.Client(api_key=api_key)
+
+            models_to_try = [active_model, "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-1.5-flash"]
+            seen_models = set()
+            candidate_models = []
+            for m in models_to_try:
+                if m and m not in seen_models:
+                    seen_models.add(m)
+                    candidate_models.append(m)
+
+            prompt_content = (
+                f"Candidate Draft Summary:\n{clean_summary}\n\n"
+                f"Desired Tone: {clean_tone}\n\n"
+                f"Generate a polished executive resume summary matching this desired tone."
+            )
+
+            for target_model in candidate_models:
+                try:
+                    response = await client.aio.models.generate_content(
+                        model=target_model,
+                        contents=prompt_content,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            system_instruction=SUMMARY_IMPROVEMENT_SYSTEM_PROMPT,
+                            temperature=0.3,
+                        ),
+                    )
+                    raw_answer = response.text or ""
+                    parsed = self._parse_json_from_llm(raw_answer)
+                    if parsed and isinstance(parsed, dict) and parsed.get("improved_summary"):
+                        logger.info(f"Successfully improved summary using Google Gemini ({target_model}).")
+                        return self._sanitize_improved_summary(parsed, clean_summary, clean_tone) 
+                    else:
+                        logger.warning(
+                            f"Gemini AI ({target_model}) summary response was not valid JSON or lacked improved_summary."
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Gemini AI ({target_model}) summary improvement call failed ({type(e).__name__}: {e})."
+                    )
+
+        # Fallback polish
+        logger.info(f"Using deterministic fallback for summary improvement (tone={clean_tone}).")
+        return self._fallback_improve_summary(clean_summary, clean_tone)
+
+    def _sanitize_improved_summary(
+        self,
+        data: Dict[str, Any],
+        original_summary: str,
+        tone: str,
+    ) -> Dict[str, Any]:
+        """Validates and cleans Gemini AI response for summary improvement."""
+        improved_summary = str(data.get("improved_summary") or "").strip()
+        if not improved_summary:
+            return self._fallback_improve_summary(original_summary, tone)
+
+        applied_tone = str(data.get("tone") or tone).strip()
+        raw_strengths = data.get("key_strengths") or []
+        key_strengths = [str(s).strip() for s in raw_strengths if str(s).strip()]
+
+        raw_variations = data.get("variations") or []
+        variations = [str(v).strip() for v in raw_variations if str(v).strip()]
+
+        return {
+            "original_summary": original_summary,
+            "improved_summary": improved_summary,
+            "tone": applied_tone,
+        }
+
+    def _fallback_improve_summary(
+        self,
+        summary: str,
+        tone: str,
+    ) -> Dict[str, Any]:
+        """Deterministic polish fallback when Gemini AI is unreachable."""
+        clean = summary.strip()
+        tone_lower = tone.strip().lower()
+
+        extracted_skills = []
+        for sk in COMMON_TECH_SKILLS:
+            if re.search(r"\b" + re.escape(sk) + r"\b", clean, re.IGNORECASE):
+                extracted_skills.append(sk)
+
+        skill_phrase = (
+            ", ".join(extracted_skills[:3])
+            if extracted_skills
+            else "modern software engineering and scalable systems"
+        )
+
+        if "technical" in tone_lower:
+            applied_tone = "Technical"
+            improved = (
+                f"High-performing technical engineer specialized in architecting and deploying resilient, scalable solutions utilizing {skill_phrase}. "
+                "Demonstrated track record of implementing robust distributed architectures, optimizing throughput, and maintaining rigorous code standards. "
+                "Adept at rapid root-cause analysis, system performance profiling, and driving engineering excellence across the full development lifecycle."
+            )
+            v1 = f"Technical specialist with proven capability in {skill_phrase}, focusing on performance, architecture, and maintainability."
+            v2 = f"Results-driven software architect with core expertise in {skill_phrase}; engineered robust platforms delivering high reliability and low latency."
+        elif "concise" in tone_lower:
+            applied_tone = "Concise"
+            improved = (
+                f"Dynamic professional with proven expertise in {skill_phrase}. "
+                "Delivers end-to-end technical solutions with measurable business impact, operational efficiency, and rapid execution."
+            )
+            v1 = f"Experienced specialist proficient in {skill_phrase}, focused on driving scalable deliverables and cross-functional results."
+            v2 = f"Versatile problem-solver with deep background in {skill_phrase} and a track record of high-velocity delivery."
+        elif "impactful" in tone_lower or "result" in tone_lower:
+            applied_tone = "Impactful"
+            improved = (
+                f"Results-oriented engineering specialist dedicated to driving quantifiable business value through mastery of {skill_phrase}. "
+                "Proven success in reducing system latency, boosting development velocity, and delivering mission-critical applications on time and within budget. "
+                "Combines analytical problem-solving with strategic execution to achieve transformative organizational outcomes."
+            )
+            v1 = f"Impact-driven professional delivering scalable implementations and measurable efficiency gains using {skill_phrase}."
+            v2 = f"Delivered high-value enterprise outcomes and accelerated delivery cycles through advanced competency in {skill_phrase}."
+        else:
+            applied_tone = "Executive" if "executive" in tone_lower else "Professional"
+            improved = (
+                f"Accomplished executive professional with comprehensive experience leading strategic initiatives and delivering robust capabilities in {skill_phrase}. "
+                "Proven leader adept at aligning technical strategy with business objectives, fostering high-performance team culture, and driving scalable innovation. "
+                "Recognized for strategic problem-solving, stakeholder engagement, and executing complex deliverables that advance long-term organizational growth."
+            )
+            v1 = f"Visionary leader with expertise in {skill_phrase}, bridging executive strategy with high-impact execution."
+            v2 = f"Senior strategist driving operational resilience and scalable engineering outcomes through deep mastery of {skill_phrase}."
+
+        key_strengths = (
+            extracted_skills[:4]
+            if extracted_skills
+            else ["Strategic Leadership", "System Architecture", "Cross-Functional Execution", "Problem Solving"]
+        )
+
+        return {
+            "original_summary": clean,
+            "improved_summary": improved,
+            "tone": applied_tone,
+            "key_strengths": key_strengths,
+            "variations": [v1, v2],
         }
 
 
