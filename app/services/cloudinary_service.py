@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Dict, Optional
@@ -57,9 +58,17 @@ class CloudinaryService:
         if not creds["cloudinary_url"]:
             creds["cloudinary_url"] = getattr(settings, "CLOUDINARY_URL", "")
 
-        # Clean invalid CLOUDINARY_URL format (must start with cloudinary://)
+        # Clean invalid CLOUDINARY_URL format
         if creds["cloudinary_url"] and not creds["cloudinary_url"].startswith("cloudinary://"):
             creds["cloudinary_url"] = ""
+
+        # Parse cloudinary://api_key:api_secret@cloud_name if individual fields are missing
+        if creds["cloudinary_url"] and not (creds["cloud_name"] and creds["api_key"] and creds["api_secret"]):
+            m = re.match(r"cloudinary://([^:]+):([^@]+)@(.+)", creds["cloudinary_url"])
+            if m:
+                creds["api_key"] = creds["api_key"] or m.group(1).strip()
+                creds["api_secret"] = creds["api_secret"] or m.group(2).strip()
+                creds["cloud_name"] = creds["cloud_name"] or m.group(3).strip()
 
         # Strip whitespace
         for k in creds:
@@ -70,38 +79,39 @@ class CloudinaryService:
     def is_configured(self) -> bool:
         creds = self.get_credentials()
         return bool(
-            creds.get("cloudinary_url")
-            or (creds.get("cloud_name") and creds.get("api_key") and creds.get("api_secret"))
+            (creds.get("cloud_name") and creds.get("api_key") and creds.get("api_secret"))
+            or creds.get("cloudinary_url")
         )
 
     def upload_resume(self, content: bytes, filename: str, user_id: str) -> str:
-        """Uploads the resume PDF to Cloudinary and returns the secure URL.
+        """Uploads the resume PDF to Cloudinary as raw binary and returns the direct HTTPS downloadable URL.
         Falls back to local file storage if Cloudinary credentials are not configured or fail.
         """
         creds = self.get_credentials()
 
         if self.is_configured():
             try:
-                if creds.get("cloudinary_url"):
-                    cloudinary.config(cloudinary_url=creds["cloudinary_url"], secure=True)
-                else:
-                    cloudinary.config(
-                        cloud_name=creds["cloud_name"],
-                        api_key=creds["api_key"],
-                        api_secret=creds["api_secret"],
-                        secure=True,
-                    )
+                # Explicitly configure Cloudinary with cloud_name, api_key, api_secret
+                cloudinary.config(
+                    cloud_name=creds["cloud_name"],
+                    api_key=creds["api_key"],
+                    api_secret=creds["api_secret"],
+                    secure=True,
+                )
 
-                unique_public_id = f"resumes/{user_id}_{uuid.uuid4().hex[:8]}"
-                logger.info(f"Uploading resume for user {user_id} to Cloudinary...")
+                safe_fn = re.sub(r"[^\w\-.]", "_", filename).strip("_")
+                if not safe_fn.lower().endswith(".pdf"):
+                    safe_fn = f"{safe_fn}.pdf"
 
+                unique_public_id = f"resumes/{user_id}_{uuid.uuid4().hex[:8]}_{safe_fn}"
+                logger.info(f"Uploading resume for user {user_id} to Cloudinary ({unique_public_id})...")
+
+                # Upload as raw resource to ensure PDF integrity and direct browser download
                 upload_result = cloudinary.uploader.upload(
                     io.BytesIO(content),
-                    resource_type="auto",
+                    resource_type="raw",
                     public_id=unique_public_id,
-                    use_filename=True,
-                    unique_filename=True,
-                    overwrite=False,
+                    overwrite=True,
                 )
 
                 secure_url = upload_result.get("secure_url") or upload_result.get("url")
@@ -119,7 +129,8 @@ class CloudinaryService:
         logger.warning("Saving resume to local storage in uploads/resumes.")
         upload_dir = Path("uploads/resumes")
         upload_dir.mkdir(parents=True, exist_ok=True)
-        unique_name = f"{user_id}_{uuid.uuid4().hex[:8]}_{filename}"
+        safe_fn = re.sub(r"[^\w\-.]", "_", filename).strip("_")
+        unique_name = f"{user_id}_{uuid.uuid4().hex[:8]}_{safe_fn}"
         local_path = upload_dir / unique_name
         local_path.write_bytes(content)
         return str(local_path).replace("\\", "/")

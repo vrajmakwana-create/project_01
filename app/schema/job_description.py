@@ -36,6 +36,7 @@ class ExperienceSeniorityAnalysis(BaseModel):
 class TailoredResumeResponse(BaseModel):
     tailored_summary: Optional[str] = None
     tailored_skills: List[str] = Field(default_factory=list)
+    resume_url: Optional[str] = None
     professional_summary_id: Optional[str] = None
     skill_id: Optional[str] = None
 
@@ -46,6 +47,7 @@ class JobDescriptionResponse(BaseModel):
     company_name: Optional[str] = None
     match_score: int
     match_rationale: Optional[str] = None
+    resume_url: Optional[str] = None
     experience_analysis: ExperienceSeniorityAnalysis
     skills_analysis: SkillsAnalysisResponse
     interview_preparation: List[InterviewPreparationTip] = Field(default_factory=list)
@@ -61,6 +63,7 @@ class JobDescriptionListItemResponse(BaseModel):
     job_title: Optional[str] = None
     company_name: Optional[str] = None
     match_score: int
+    resume_url: Optional[str] = None
     seniority_level_jd: Optional[str] = None
     seniority_level_candidate: Optional[str] = None
     missing_skills_count: int

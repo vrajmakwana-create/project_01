@@ -342,3 +342,30 @@ async def get_full_resume(
 ):
     resume_service = ResumeService(request, db)
     return await resume_service.get_full_resume(user["user_id"])
+
+
+# ============================================================================
+
+# ============================================================================
+# RESUME DOCUMENT GENERATION & DOWNLOAD
+# ============================================================================
+
+@router.post("/generate-document")
+@router.get("/document")
+async def generate_resume_document(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(current_user),
+):
+    resume_service = ResumeService(request, db)
+    return await resume_service.generate_document(user["user_id"])
+
+
+@router.get("/download")
+async def download_resume_document(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(current_user),
+):
+    resume_service = ResumeService(request, db)
+    return await resume_service.download_resume(user["user_id"])

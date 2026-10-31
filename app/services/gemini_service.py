@@ -957,6 +957,8 @@ class GeminiService:
             "original_summary": original_summary,
             "improved_summary": improved_summary,
             "tone": applied_tone,
+            "key_strengths": key_strengths,
+            "variations": variations,
         }
 
     def _fallback_improve_summary(

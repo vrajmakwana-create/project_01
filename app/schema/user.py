@@ -58,6 +58,7 @@ class UserDetail(BaseModel):
     role_id: str
     step_count: Optional[int] = 0
     onboarding_completed: Optional[bool] = None
+    resume_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

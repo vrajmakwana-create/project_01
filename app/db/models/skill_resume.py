@@ -1,3 +1,4 @@
+from typing import Any
 from sqlalchemy import Boolean, ForeignKey
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
@@ -8,7 +9,7 @@ from app.db.models.user import User
 class SkillResume(IdMixins, TimeMixins):
     __tablename__ = "skills_resume"
 
-    skills: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    skills: Mapped[Any] = mapped_column(JSONB, nullable=False)
     is_original: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
 
     # Relationships

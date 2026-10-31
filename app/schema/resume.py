@@ -44,12 +44,47 @@ class ProfessionalSummarySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Skill Schema
-class SkillSchema(BaseModel):
-    skills: list[str]
-    user_id: Optional[str] = None
+# Technical Skill Categories
+TECHNICAL_SKILL_CATEGORIES = [
+    "Programming Languages",
+    "Frameworks & Libraries",
+    "Databases",
+    "Tools & Technologies",
+    "Cloud & DevOps",
+    "Web Development",
+    "AI & Machine Learning",
+    "Data Analysis & Visualization",
+    "Testing & QA",
+    "Operating Systems",
+]
 
-    model_config = ConfigDict(from_attributes=True)
+
+class CategorizedSkillItem(BaseModel):
+    category: str
+    skills: list[str]
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+
+# Skill Schema (Supports categorized dict, list of categorized items, or flat list of strings)
+class SkillSchema(BaseModel):
+    skills: Union[dict[str, list[str]], list[CategorizedSkillItem], list[str]]
+    user_id: Optional[str] = None
+    is_original: Optional[bool] = False
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_skills_payload(cls, data: Any) -> Any:
+        if isinstance(data, list):
+            return {"skills": data}
+        if isinstance(data, dict):
+            if "skills" not in data:
+                user_id = data.pop("user_id", None)
+                is_orig = data.pop("is_original", False)
+                return {"skills": data, "user_id": user_id, "is_original": is_orig}
+        return data
 
 
 # Educational Info Schema
@@ -264,5 +299,7 @@ class ImproveSummaryResponse(BaseModel):
     original_summary: str
     improved_summary: str
     tone: str
+    key_strengths: list[str] = Field(default_factory=list)
+    variations: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

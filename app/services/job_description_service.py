@@ -24,6 +24,11 @@ from app.schema.job_description import (
     TailoredResumeResponse,
 )
 from app.services.gemini_service import gemini_service
+import re
+from app.schema.resume import PersonalInfoSchema
+from app.services.cloudinary_service import cloudinary_service
+from app.services.pdf_generator_service import pdf_generator_service
+
 from app.services.resume_service import ResumeServiceUtils
 
 logger = get_logger(__name__)
@@ -98,13 +103,40 @@ class JobDescriptionService:
                     "is_original": False,
                 })
 
-            # 6. Save complete JobDescription record
+            # 6. Generate tailored resume PDF and upload to Cloudinary
+            tailored_resume_url = None
+            try:
+                _, personal_obj = await self.resume_service_utils.check_personal_info_exist(user_id)
+                personal_data = PersonalInfoSchema.model_validate(personal_obj).model_dump() if personal_obj else {}
+                
+                tailored_pdf_bytes = pdf_generator_service.generate_resume_pdf(
+                    personal_info=personal_data,
+                    summary=analysis.get("tailored_summary") or current_profile.get("professional_summary"),
+                    skills=analysis.get("tailored_skills") or current_profile.get("skills"),
+                    work_experience=current_profile.get("work_experience"),
+                    projects=current_profile.get("projects_info"),
+                    education=current_profile.get("educational_info"),
+                    target_role=analysis.get("job_title") or payload.job_title,
+                )
+                safe_title = re.sub(r"[^\w\-.]", "_", (analysis.get("job_title") or payload.job_title or "tailored_resume")).strip("_")
+                tailored_resume_url = cloudinary_service.upload_resume(
+                    content=tailored_pdf_bytes,
+                    filename=f"{safe_title}.pdf",
+                    user_id=user_id,
+                )
+                logger.info(f"Generated tailored resume PDF for user {user_id}: {tailored_resume_url}")
+            except Exception as ex:
+                logger.warning(f"Could not generate tailored resume PDF during JD analysis: {ex}")
+                tailored_resume_url = None
+
+            # 7. Save complete JobDescription record with resume_url
             jd_record_data = {
                 "job_title": analysis.get("job_title"),
                 "company_name": analysis.get("company_name"),
                 "job_description": payload.job_description,
                 "match_score": analysis.get("match_score", 0),
                 "match_rationale": analysis.get("match_rationale"),
+                "resume_url": tailored_resume_url,
                 "jd_experience_years": analysis.get("jd_experience_years"),
                 "candidate_experience_years": analysis.get("candidate_experience_years"),
                 "seniority_level_jd": analysis.get("seniority_level_jd"),
@@ -168,6 +200,7 @@ class JobDescriptionService:
                     "job_title": r.job_title,
                     "company_name": r.company_name,
                     "match_score": r.match_score,
+                    "resume_url": getattr(r, "resume_url", None),
                     "seniority_level_jd": r.seniority_level_jd,
                     "seniority_level_candidate": r.seniority_level_candidate,
                     "missing_skills_count": len(r.missing_skills or []),
@@ -229,6 +262,7 @@ class JobDescriptionService:
             "company_name": jd.company_name,
             "match_score": jd.match_score,
             "match_rationale": jd.match_rationale,
+            "resume_url": getattr(jd, "resume_url", None),
             "experience_analysis": {
                 "jd_experience_years": jd.jd_experience_years,
                 "candidate_experience_years": jd.candidate_experience_years,
@@ -248,6 +282,7 @@ class JobDescriptionService:
             "tailored_resume": {
                 "tailored_summary": jd.tailored_summary,
                 "tailored_skills": jd.tailored_skills or [],
+                "resume_url": getattr(jd, "resume_url", None),
                 "professional_summary_id": jd.professional_summary_id,
                 "skill_id": jd.skill_id,
             },
