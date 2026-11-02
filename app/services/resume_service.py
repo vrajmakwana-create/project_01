@@ -1,8 +1,10 @@
+
 import re
 import uuid
 from pathlib import Path
 from fastapi import UploadFile, HTTPException, Request, status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 from app.core.constants import RESUME_FILE_SIZE, ONBOARDING_STEPS
 from app.core.exception import ServerException
@@ -18,6 +20,8 @@ from app.schema.resume import (
     EducationalInfoSchema,
     WorkExperienceSchema,
     ProjectsInfoSchema,
+    ImproveSummaryRequest,
+    ImproveSummaryResponse,
 )
 from app.repository.personal_info_resume_repository import PersonalInfoResumeRepository
 from app.repository.professional_summary_resume_repository import ProfessionalSummaryResumeRepository
@@ -27,6 +31,8 @@ from app.repository.project_info_resume_repository import ProjectInfoResumeRepos
 from app.repository.work_experience_resume_repository import WorkExperienceResumeRepository
 from app.services.gemini_service import gemini_service
 from app.services.cloudinary_service import cloudinary_service
+from app.services.pdf_generator_service import pdf_generator_service
+from app.common.utils import validate_work_experience_non_overlapping
 
 logger = get_logger(__name__)
 
@@ -435,6 +441,43 @@ class ResumeService:
         except Exception as e:
             raise ServerException(message=str(e))
 
+
+    async def improve_summary(self, payload: ImproveSummaryRequest, user_id: str):
+        try:
+            await self.resume_service_utils.check_user_exist(user_id)
+
+            summary_text = (payload.summary or "").strip()
+
+            # If user did not provide summary text in payload, check if they have a saved professional summary
+            if not summary_text:
+                is_exist, record = await self.resume_service_utils.check_professional_original_summary_exist(user_id)
+                if is_exist and record and getattr(record, "summary", None):
+                    summary_text = record.summary.strip()
+
+            if not summary_text:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorMessage.SUMMARY_TEXT_REQUIRED,
+                )
+
+            desired_tone = (payload.tone or "executive").strip()
+            result_data = await gemini_service.improve_summary(
+                summary=summary_text,
+                tone=desired_tone,
+            )
+
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg=SuccessMessage.SUMMARY_IMPROVED_SUCCESSFULLY,
+                data= ImproveSummaryResponse.model_validate(result_data),
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error improving summary for user {user_id}: {e}")
+            raise ServerException(message=str(e))
+
     # ------------------ Skills ------------------
     async def save_skills(self, skills_payload: SkillSchema, user_id: str):
         try:
@@ -657,8 +700,19 @@ class ResumeService:
                     detail=ErrorMessage.WORK_EXPERIENCE_ALREADY_EXISTS,
                 )
 
-            data = work_experience.model_dump()
-            data["user_id"] = user_id
+            try:
+                validate_work_experience_non_overlapping(work_experience.work_experience)
+            except ValueError as ve:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=str(ve),
+                )
+
+            items_data = [item.model_dump() for item in work_experience.work_experience]
+            data = {
+                "work_experience": items_data,
+                "user_id": user_id,
+            }
 
             result = await self.work_experience_resume_repo.create(data)
 
@@ -686,9 +740,17 @@ class ResumeService:
                     detail=ErrorMessage.WORK_EXPERIENCE_NOT_FOUND,
                 )
 
-            data = work_experience.model_dump()
+            try:
+                validate_work_experience_non_overlapping(work_experience.work_experience)
+            except ValueError as ve:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=str(ve),
+                )
+
+            items_data = [item.model_dump() for item in work_experience.work_experience]
             result = await self.work_experience_resume_repo.update(
-                record, {"work_experience": data.get("work_experience", [])}
+                record, {"work_experience": items_data}
             )
 
             return success_response(
@@ -769,11 +831,21 @@ class ResumeService:
             # Save Final Onboarding Step and Complete Onboarding
             await self.user_repository.update(user, {"step_count": ONBOARDING_STEPS["projects"], "onboarding_completed": True})
             
+            # Automatically compile, generate, upload original resume document to Cloudinary and update user.resume_url
+            resume_url = None
+            try:
+                resume_url = await self.generate_and_save_original_resume(user_id)
+            except Exception as ex:
+                logger.warning(f"Could not generate original resume document on onboarding completion: {ex}")
+
+            res_data = ProjectsInfoSchema.model_validate(result).model_dump()
+            if resume_url:
+                res_data["resume_url"] = resume_url
 
             return success_response(
                 status_code=http_status.HTTP_200_OK,
                 msg=SuccessMessage.PROJECTS_INFO_SAVED_SUCCESSFULLY,
-                data=ProjectsInfoSchema.model_validate(result),
+                data=res_data,
             )
         except HTTPException:
             raise
@@ -843,6 +915,109 @@ class ResumeService:
             return success_response(
                 status_code=http_status.HTTP_200_OK,
                 msg=SuccessMessage.PROJECTS_INFO_DELETED_SUCCESSFULLY,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message=str(e))
+
+
+    async def generate_and_save_original_resume(self, user_id: str) -> Optional[str]:
+        """Compiles user's complete original resume from DB, generates standardized PDF,
+        uploads to Cloudinary, and updates user.resume_url in users table.
+        """
+        user = await self.resume_service_utils.check_user_exist(user_id)
+
+        _, personal_info = await self.resume_service_utils.check_personal_info_exist(user_id)
+        _, summary = await self.resume_service_utils.check_professional_original_summary_exist(user_id)
+        _, skills = await self.resume_service_utils.check_skills_exist(user_id)
+        _, education = await self.resume_service_utils.check_educational_info_exist(user_id)
+        _, work_exp = await self.resume_service_utils.check_work_experience_exist(user_id)
+        _, projects = await self.resume_service_utils.check_projects_info_exist(user_id)
+
+        personal_dict = PersonalInfoSchema.model_validate(personal_info).model_dump() if personal_info else {}
+        summary_text = summary.summary if summary else ""
+        skills_list = skills.skills if skills else []
+        edu_list = education.educations if education else []
+        work_list = work_exp.work_experience if work_exp else []
+        proj_list = projects.projects if projects else []
+
+        pdf_bytes = pdf_generator_service.generate_resume_pdf(
+            personal_info=personal_dict,
+            summary=summary_text,
+            skills=skills_list,
+            work_experience=work_list,
+            projects=proj_list,
+            education=edu_list,
+        )
+
+        user_name = f"{personal_dict.get('first_name', '')}_{personal_dict.get('last_name', '')}".strip("_") or "candidate"
+        safe_name = f"{user_name}_original_resume.pdf"
+
+        resume_url = cloudinary_service.upload_resume(
+            content=pdf_bytes,
+            filename=safe_name,
+            user_id=user_id,
+        )
+
+        await self.user_repository.update(user, {"resume_url": resume_url})
+        logger.info(f"Generated original resume document and saved resume_url for user {user_id}: {resume_url}")
+        return resume_url
+
+    async def generate_document(self, user_id: str):
+        """Endpoint handler to generate and upload original resume document on demand."""
+        try:
+            resume_url = await self.generate_and_save_original_resume(user_id)
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg="Resume document generated and uploaded successfully",
+                data={"resume_url": resume_url},
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message=str(e))
+
+
+    async def download_resume(self, user_id: str):
+        """Generates and directly serves the downloadable resume PDF file as a binary stream."""
+        try:
+            await self.resume_service_utils.check_user_exist(user_id)
+
+            _, personal_info = await self.resume_service_utils.check_personal_info_exist(user_id)
+            _, summary = await self.resume_service_utils.check_professional_original_summary_exist(user_id)
+            _, skills = await self.resume_service_utils.check_skills_exist(user_id)
+            _, education = await self.resume_service_utils.check_educational_info_exist(user_id)
+            _, work_exp = await self.resume_service_utils.check_work_experience_exist(user_id)
+            _, projects = await self.resume_service_utils.check_projects_info_exist(user_id)
+
+            personal_dict = PersonalInfoSchema.model_validate(personal_info).model_dump() if personal_info else {}
+            summary_text = summary.summary if summary else ""
+            skills_list = skills.skills if skills else []
+            edu_list = education.educations if education else []
+            work_list = work_exp.work_experience if work_exp else []
+            proj_list = projects.projects if projects else []
+
+            pdf_bytes = pdf_generator_service.generate_resume_pdf(
+                personal_info=personal_dict,
+                summary=summary_text,
+                skills=skills_list,
+                work_experience=work_list,
+                projects=proj_list,
+                education=edu_list,
+            )
+
+            user_name = f"{personal_dict.get('first_name', '')}_{personal_dict.get('last_name', '')}".strip("_") or "candidate"
+            filename = f"{user_name}_original_resume.pdf"
+
+            from fastapi import Response
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Content-Type": "application/pdf",
+                },
             )
         except HTTPException:
             raise
@@ -956,9 +1131,20 @@ class ResumeServiceUtils:
         work_exp = await self.work_experience_repo.get_all(
             filters={"user_id": user_id}
         )
-        if work_exp:
-            return True, work_exp[0]
-        return False, None
+        if not work_exp:
+            return False, None
+
+        all_items = []
+        for rec in work_exp:
+            raw = rec.work_experience
+            if isinstance(raw, list):
+                all_items.extend(raw)
+            elif isinstance(raw, dict):
+                all_items.append(raw)
+
+        primary_rec = work_exp[0]
+        primary_rec.work_experience = all_items
+        return True, primary_rec
 
     async def check_projects_info_exist(self, user_id: str):
         projects = await self.project_info_repo.get_all(

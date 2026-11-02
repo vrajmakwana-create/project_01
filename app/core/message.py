@@ -20,6 +20,7 @@ class SuccessMessage:
     PROFESSIONAL_SUMMARY_SAVED_SUCCESSFULLY = "Professional Summary Saved Successfully!"
     PROFESSIONAL_SUMMARY_UPDATED_SUCCESSFULLY = "Professional Summary Updated Successfully!"
     PROFESSIONAL_SUMMARY_DELETED_SUCCESSFULLY = "Professional Summary Deleted Successfully!"
+    SUMMARY_IMPROVED_SUCCESSFULLY = "Professional summary improved successfully!"
     SKILLS_SAVED_SUCCESSFULLY = "Skills Saved Successfully!"
     SKILLS_UPDATED_SUCCESSFULLY = "Skills Updated Successfully!"
     SKILLS_DELETED_SUCCESSFULLY = "Skills Deleted Successfully!"
@@ -34,6 +35,7 @@ class SuccessMessage:
     PROJECTS_INFO_DELETED_SUCCESSFULLY = "Projects information Deleted Successfully!"
     RESUME_FETCHED_SUCCESSFULLY = "Resume fetched successfully!"
     USER_FETCHED_SUCCESSFULLY = "User fetched successfully!"
+
 
 class ErrorMessage:
     TOKEN_EXPIRE = "Token Expired!"
@@ -57,6 +59,8 @@ class ErrorMessage:
     PERSONAL_INFO__NOT_FOUND = "personal information not found!"
     PROFESSIONAL_SUMMARY_ALREADY_EXIST = "professional summary already exist!"
     PROFESSIONAL_SUMMARY_NOT_FOUND = "professional summary not found!"
+    SUMMARY_TEXT_REQUIRED = "Summary text is required to generate improved summary!"
+    SUMMARY_IMPROVEMENT_FAILED = "Failed to improve summary using AI model!"
     SKILLS_NOT_FOUND = "Skills not found!"
     SKILLS_ALREADY_EXISTS = "Skills Already Exists"
     EDUCATIONAL_INFO_ALREADY_EXISTS = "Educational information already exists!"
@@ -67,6 +71,7 @@ class ErrorMessage:
     PROJECTS_INFO_NOT_FOUND = "Projects information not found!"
     RESUME_NOT_FOUND = "Resume not found!"
     RESUME_ALREADY_UPLOADED = "Resume already uploaded. Multiple uploads are not allowed."
-    
+
+
 class LoggerMessage:
     ExpiredSignatureError_Logtext = "user_id :: {user_id} & error :: {e}"

@@ -9,6 +9,7 @@ from app.schema.resume import (
     EducationalInfoSchema,
     WorkExperienceSchema,
     ProjectsInfoSchema,
+    ImproveSummaryRequest,
 )
 from app.core.dependencies import current_user
 from app.db.session import get_db
@@ -122,6 +123,18 @@ async def delete_professional_summary(
 ):
     resume_service = ResumeService(request, db)
     return await resume_service.delete_professional_summary(user["user_id"])
+
+
+
+@router.post("/improve-summary")
+async def improve_professional_summary(
+    request: Request,
+    payload: ImproveSummaryRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(current_user),
+):
+    resume_service = ResumeService(request, db)
+    return await resume_service.improve_summary(payload, user["user_id"])
 
 
 # ============================================================================
@@ -329,3 +342,30 @@ async def get_full_resume(
 ):
     resume_service = ResumeService(request, db)
     return await resume_service.get_full_resume(user["user_id"])
+
+
+# ============================================================================
+
+# ============================================================================
+# RESUME DOCUMENT GENERATION & DOWNLOAD
+# ============================================================================
+
+@router.post("/generate-document")
+@router.get("/document")
+async def generate_resume_document(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(current_user),
+):
+    resume_service = ResumeService(request, db)
+    return await resume_service.generate_document(user["user_id"])
+
+
+@router.get("/download")
+async def download_resume_document(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(current_user),
+):
+    resume_service = ResumeService(request, db)
+    return await resume_service.download_resume(user["user_id"])

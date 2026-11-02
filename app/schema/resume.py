@@ -1,3 +1,4 @@
+from app.common.utils import validate_work_experience_non_overlapping, calculate_candidate_experience_years
 from typing import Any, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -44,12 +45,47 @@ class ProfessionalSummarySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Skill Schema
-class SkillSchema(BaseModel):
-    skills: list[str]
-    user_id: Optional[str] = None
+# Technical Skill Categories
+TECHNICAL_SKILL_CATEGORIES = [
+    "Programming Languages",
+    "Frameworks & Libraries",
+    "Databases",
+    "Tools & Technologies",
+    "Cloud & DevOps",
+    "Web Development",
+    "AI & Machine Learning",
+    "Data Analysis & Visualization",
+    "Testing & QA",
+    "Operating Systems",
+]
 
-    model_config = ConfigDict(from_attributes=True)
+
+class CategorizedSkillItem(BaseModel):
+    category: str
+    skills: list[str]
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+
+# Skill Schema (Supports categorized dict, list of categorized items, or flat list of strings)
+class SkillSchema(BaseModel):
+    skills: Union[dict[str, list[str]], list[CategorizedSkillItem], list[str]]
+    user_id: Optional[str] = None
+    is_original: Optional[bool] = False
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_skills_payload(cls, data: Any) -> Any:
+        if isinstance(data, list):
+            return {"skills": data}
+        if isinstance(data, dict):
+            if "skills" not in data:
+                user_id = data.pop("user_id", None)
+                is_orig = data.pop("is_original", False)
+                return {"skills": data, "user_id": user_id, "is_original": is_orig}
+        return data
 
 
 # Educational Info Schema
@@ -57,8 +93,8 @@ class EducationItemSchema(BaseModel):
     degree: str
     institution: Optional[str] = None
     school_name: Optional[str] = None
-    start_date: Optional[Union[str, int]] = None
-    end_date: Optional[Union[str, int]] = None
+    start_date: Optional[Union[int, float, str]] = None
+    end_date: Optional[Union[int, float, str]] = None
     gpa: Optional[str] = None
     field_of_study: Optional[str] = None
     url: Optional[str] = None
@@ -110,11 +146,12 @@ class WorkExperienceItemSchema(BaseModel):
     location_type: Optional[str] = None
     employment_type: Optional[str] = None
     is_currently_work_here: Optional[bool] = False
-    start_date: Optional[Union[str, int]] = None
-    end_date: Optional[Union[str, int]] = None
+    start_date: Optional[Union[int, float, str]] = None
+    end_date: Optional[Union[int, float, str]] = None
     responsibilities: Optional[Union[str, list[str]]] = None
     achievements: Optional[Union[str, list[str]]] = None
     order: Optional[int] = None
+    experience_years: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True, extra="allow")
 
@@ -136,6 +173,8 @@ class WorkExperienceItemSchema(BaseModel):
 class WorkExperienceSchema(BaseModel):
     work_experience: list[WorkExperienceItemSchema]
     user_id: Optional[str] = None
+    total_experience_years: Optional[float] = None
+    candidate_experience_years: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -157,14 +196,29 @@ class WorkExperienceSchema(BaseModel):
                     return {"work_experience": [item], "user_id": user_id}
         return data
 
+    @model_validator(mode="after")
+    def validate_and_compute_experience(self) -> "WorkExperienceSchema":
+        if self.work_experience:
+            validate_work_experience_non_overlapping(self.work_experience)
+            for item in self.work_experience:
+                item_dict = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+                item.experience_years = calculate_candidate_experience_years([item_dict])
+            total = calculate_candidate_experience_years(self.work_experience)
+            self.total_experience_years = total
+            self.candidate_experience_years = total
+        else:
+            self.total_experience_years = 0.0
+            self.candidate_experience_years = 0.0
+        return self
+
 
 # Projects Info Schema
 class ProjectItemSchema(BaseModel):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
-    start_date: Optional[Union[str, int]] = None
-    end_date: Optional[Union[str, int]] = None
+    start_date: Optional[Union[int, float, str]] = None
+    end_date: Optional[Union[int, float, str]] = None
     status: Optional[str] = None
     responsibilities: Optional[Union[str, list[str]]] = None
     achievements: Optional[Union[str, list[str]]] = None
@@ -243,5 +297,28 @@ class FullResumeSchema(BaseModel):
     educational_info: Optional[EducationalInfoSchema] = None
     work_experience: Optional[WorkExperienceSchema] = None
     projects_info: Optional[ProjectsInfoSchema] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImproveSummaryRequest(BaseModel):
+    summary: Optional[str] = Field(
+        default=None,
+        description="Current resume summary text to improve and polish. If omitted, the user's saved summary from database will be used.",
+    )
+    tone: Optional[str] = Field(
+        default="executive",
+        description="Desired tone for the resume executive summary (e.g., executive, professional, impactful, concise, technical).",
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImproveSummaryResponse(BaseModel):
+    original_summary: str
+    improved_summary: str
+    tone: str
+    key_strengths: list[str] = Field(default_factory=list)
+    variations: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)

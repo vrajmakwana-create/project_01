@@ -23,4 +23,4 @@ huggingface_hub>=0.20.0
 pypdf>=4.0.0
 google-genai>=0.1.0
 cloudinary>=1.40.0
-
+reportlab>=4.0.0
