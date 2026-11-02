@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -35,7 +35,7 @@ class ExperienceSeniorityAnalysis(BaseModel):
 
 class TailoredResumeResponse(BaseModel):
     tailored_summary: Optional[str] = None
-    tailored_skills: List[str] = Field(default_factory=list)
+    tailored_skills: Union[Dict[str, List[str]], List[str]] = Field(default_factory=dict)
     resume_url: Optional[str] = None
     professional_summary_id: Optional[str] = None
     skill_id: Optional[str] = None

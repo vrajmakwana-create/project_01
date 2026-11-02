@@ -1,3 +1,4 @@
+from app.common.utils import validate_work_experience_non_overlapping, calculate_candidate_experience_years
 from typing import Any, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -92,8 +93,8 @@ class EducationItemSchema(BaseModel):
     degree: str
     institution: Optional[str] = None
     school_name: Optional[str] = None
-    start_date: Optional[Union[str, int]] = None
-    end_date: Optional[Union[str, int]] = None
+    start_date: Optional[Union[int, float, str]] = None
+    end_date: Optional[Union[int, float, str]] = None
     gpa: Optional[str] = None
     field_of_study: Optional[str] = None
     url: Optional[str] = None
@@ -145,11 +146,12 @@ class WorkExperienceItemSchema(BaseModel):
     location_type: Optional[str] = None
     employment_type: Optional[str] = None
     is_currently_work_here: Optional[bool] = False
-    start_date: Optional[Union[str, int]] = None
-    end_date: Optional[Union[str, int]] = None
+    start_date: Optional[Union[int, float, str]] = None
+    end_date: Optional[Union[int, float, str]] = None
     responsibilities: Optional[Union[str, list[str]]] = None
     achievements: Optional[Union[str, list[str]]] = None
     order: Optional[int] = None
+    experience_years: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True, extra="allow")
 
@@ -171,6 +173,8 @@ class WorkExperienceItemSchema(BaseModel):
 class WorkExperienceSchema(BaseModel):
     work_experience: list[WorkExperienceItemSchema]
     user_id: Optional[str] = None
+    total_experience_years: Optional[float] = None
+    candidate_experience_years: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -192,14 +196,29 @@ class WorkExperienceSchema(BaseModel):
                     return {"work_experience": [item], "user_id": user_id}
         return data
 
+    @model_validator(mode="after")
+    def validate_and_compute_experience(self) -> "WorkExperienceSchema":
+        if self.work_experience:
+            validate_work_experience_non_overlapping(self.work_experience)
+            for item in self.work_experience:
+                item_dict = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+                item.experience_years = calculate_candidate_experience_years([item_dict])
+            total = calculate_candidate_experience_years(self.work_experience)
+            self.total_experience_years = total
+            self.candidate_experience_years = total
+        else:
+            self.total_experience_years = 0.0
+            self.candidate_experience_years = 0.0
+        return self
+
 
 # Projects Info Schema
 class ProjectItemSchema(BaseModel):
     name: str
     description: Optional[str] = None
     url: Optional[str] = None
-    start_date: Optional[Union[str, int]] = None
-    end_date: Optional[Union[str, int]] = None
+    start_date: Optional[Union[int, float, str]] = None
+    end_date: Optional[Union[int, float, str]] = None
     status: Optional[str] = None
     responsibilities: Optional[Union[str, list[str]]] = None
     achievements: Optional[Union[str, list[str]]] = None

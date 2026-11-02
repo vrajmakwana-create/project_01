@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exception import ServerException
 from app.core.logger import get_logger
+from app.common.utils import calculate_candidate_experience_years
 from app.core.message import ErrorMessage
 from app.core.response import success_response
 from app.db.models.job_description import JobDescription
@@ -69,12 +70,15 @@ class JobDescriptionService:
             _, proj_obj = await self.resume_service_utils.check_projects_info_exist(user_id)
             _, edu_obj = await self.resume_service_utils.check_educational_info_exist(user_id)
 
+            work_list = work_obj.work_experience if work_obj else []
+            cand_experience_years = calculate_candidate_experience_years(work_list)
             current_profile: Dict[str, Any] = {
                 "professional_summary": summary_obj.summary if summary_obj else "",
-                "skills": skills_obj.skills if skills_obj else [],
-                "work_experience": work_obj.work_experience if work_obj else [],
+                "skills": skills_obj.skills if skills_obj else {},
+                "work_experience": work_list,
                 "projects_info": proj_obj.projects if proj_obj else [],
                 "educational_info": edu_obj.educations if edu_obj else [],
+                "candidate_experience_years": cand_experience_years,
             }
 
             # 3. Analyze JD and generate tailored content + interview prep via Gemini
@@ -138,7 +142,7 @@ class JobDescriptionService:
                 "match_rationale": analysis.get("match_rationale"),
                 "resume_url": tailored_resume_url,
                 "jd_experience_years": analysis.get("jd_experience_years"),
-                "candidate_experience_years": analysis.get("candidate_experience_years"),
+                "candidate_experience_years": cand_experience_years if cand_experience_years is not None else analysis.get("candidate_experience_years"),
                 "seniority_level_jd": analysis.get("seniority_level_jd"),
                 "seniority_level_candidate": analysis.get("seniority_level_candidate"),
                 "experience_gap_verdict": analysis.get("experience_gap_verdict"),
@@ -147,7 +151,7 @@ class JobDescriptionService:
                 "missing_skills": analysis.get("missing_skills", []),
                 "interview_preparation_tips": analysis.get("interview_preparation_tips", []),
                 "tailored_summary": analysis.get("tailored_summary"),
-                "tailored_skills": analysis.get("tailored_skills", []),
+                "tailored_skills": analysis.get("tailored_skills") or {},
                 "user_id": user_id,
                 "professional_summary_id": tailored_summary_obj.id if tailored_summary_obj else None,
                 "skill_id": tailored_skills_obj.id if tailored_skills_obj else None,
@@ -281,7 +285,7 @@ class JobDescriptionService:
             "interview_preparation": jd.interview_preparation_tips or [],
             "tailored_resume": {
                 "tailored_summary": jd.tailored_summary,
-                "tailored_skills": jd.tailored_skills or [],
+                "tailored_skills": jd.tailored_skills or {},
                 "resume_url": getattr(jd, "resume_url", None),
                 "professional_summary_id": jd.professional_summary_id,
                 "skill_id": jd.skill_id,

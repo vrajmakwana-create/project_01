@@ -8,6 +8,10 @@ from google.genai import types
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.common.utils import (
+    calculate_candidate_experience_years,
+    structure_skills_into_categories,
+)
 
 logger = get_logger(__name__)
 
@@ -124,7 +128,11 @@ Your tasks:
      - `likely_interview_questions`: Top 3 realistic interview questions testing this skill.
 5. Generate JD-Tailored Resume Content (100% Relevance for ATS Shortlisting):
    - `tailored_summary`: An impactful 3-4 sentence professional summary tailored precisely to the JD, embedding key JD terms, matching strengths, and candidate domain relevance to maximize ATS shortlisting without fabricating false claims.
-   - `tailored_skills`: An optimized, deduplicated list of skills strategically arranged with JD priority keywords and matching candidate proficiencies. Provide pure, clean skill names only (e.g. ["Python", "FastAPI", "Kubernetes", "AWS"]). Do NOT append any notes, brackets, or parenthetical annotations like "(Interview Focus)" or "(Learning)".
+   - `tailored_skills`: A dictionary organizing relevant skills under the 10 standard categories:
+     "Programming Languages", "Frameworks & Libraries", "Databases", "Tools & Technologies",
+     "Cloud & DevOps", "Web Development", "AI & Machine Learning", "Data Analysis & Visualization",
+     "Testing & QA", "Operating Systems".
+     Include ONLY populated categories (omit empty categories). Each category must map to a list of pure, clean skill names without parenthetical notes (e.g. {"Programming Languages": ["Python", "SQL"]}).
 
 Return ONLY a strict JSON object matching this schema:
 {
@@ -150,7 +158,11 @@ Return ONLY a strict JSON object matching this schema:
     }
   ],
   "tailored_summary": "...",
-  "tailored_skills": ["..."]
+  "tailored_skills": {
+    "Programming Languages": ["Python", "SQL"],
+    "Frameworks & Libraries": ["Django", "FastAPI"],
+    "Databases": ["PostgreSQL", "MongoDB"]
+  }
 }
 """
 
@@ -595,14 +607,19 @@ class GeminiService:
         if isinstance(projects, dict):
             projects = projects.get("projects", [])
 
+        total_cand_exp = current_resume.get("candidate_experience_years")
+        if total_cand_exp is None:
+            total_cand_exp = calculate_candidate_experience_years(work_exp)
+
         prompt_context = (
             f"Target Job Description:\n{jd_text[:12000]}\n\n"
             f"Provided Job Title: {job_title or 'Auto-detect from JD'}\n"
             f"Provided Company Name: {company_name or 'Auto-detect from JD'}\n\n"
             f"Candidate Current Resume Profile:\n"
             f"- Current Professional Summary: {candidate_summary}\n"
+            f"- Total Candidate Experience: {total_cand_exp} years (sum across all {len(work_exp)} work experience positions)\n"
+            f"- Work Experience History: {json.dumps(work_exp)}\n"
             f"- Current Skills: {json.dumps(candidate_skills)}\n"
-            f"- Work Experience History: {json.dumps(work_exp[:6])}\n"
             f"- Projects: {json.dumps(projects[:6])}\n"
         )
 
@@ -706,15 +723,17 @@ class GeminiService:
                         ],
                     })
 
+        if current_resume.get("candidate_experience_years") is not None:
+            try:
+                cand_exp = float(current_resume["candidate_experience_years"])
+            except Exception:
+                pass
+
         tailored_summary = str(data.get("tailored_summary") or "").strip()
-        raw_tailored_skills = data.get("tailored_skills") or []
-        tailored_skills = []
-        seen_tailored = set()
-        for s in raw_tailored_skills:
-            clean_s = re.sub(r"\s*\(.*?\)", "", str(s)).strip()
-            if clean_s and clean_s.lower() not in seen_tailored:
-                seen_tailored.add(clean_s.lower())
-                tailored_skills.append(clean_s)
+        tailored_skills = structure_skills_into_categories(
+            data.get("tailored_skills"),
+            existing_categorized=current_resume.get("skills") if isinstance(current_resume.get("skills"), dict) else None,
+        )
 
         return {
             "job_title": final_job_title,
@@ -752,10 +771,13 @@ class GeminiService:
                 jd_exp_years = None
 
         # 2. Candidate experience estimation
-        work_list = current_resume.get("work_experience") or []
-        if isinstance(work_list, dict):
-            work_list = work_list.get("work_experience", [])
-        cand_exp_years = max(1.0, float(len(work_list)) * 1.5) if work_list else 2.0
+        if current_resume.get("candidate_experience_years") is not None:
+            cand_exp_years = float(current_resume["candidate_experience_years"])
+        else:
+            work_list = current_resume.get("work_experience") or []
+            if isinstance(work_list, dict):
+                work_list = work_list.get("work_experience", [])
+            cand_exp_years = calculate_candidate_experience_years(work_list) if work_list else 0.0
 
         # Seniority levels
         def get_seniority(years: Optional[float]) -> str:
@@ -844,13 +866,10 @@ class GeminiService:
             f"Highly adaptive with rapid mastery of {', '.join(missing[:2]) if missing else 'modern toolchains'}, focused on driving immediate engineering impact for the {role_label} position."
         )
 
-        seen_skills = set()
-        tailored_skills = []
-        for sk in matching + missing + [s for s in cand_skills if s]:
-            clean_sk = re.sub(r"\s*\(.*?\)", "", str(sk)).strip()
-            if clean_sk and clean_sk.lower() not in seen_skills:
-                seen_skills.add(clean_sk.lower())
-                tailored_skills.append(clean_sk)
+        tailored_skills = structure_skills_into_categories(
+            matching + missing + ([s for s in cand_skills if s] if isinstance(cand_skills, list) else []),
+            existing_categorized=cand_skills if isinstance(cand_skills, dict) else None,
+        )
 
         return {
             "job_title": job_title or "Target Role",

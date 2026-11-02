@@ -29,7 +29,7 @@ class JobDescription(IdMixins, TimeMixins):
 
     # Tailored Content
     tailored_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
-    tailored_skills: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list)
+    tailored_skills: Mapped[Any] = mapped_column(JSONB, nullable=False, default=dict)
     resume_url: Mapped[Optional[str]] = mapped_column(String, nullable=True, default=None)
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)

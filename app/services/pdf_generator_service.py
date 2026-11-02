@@ -1,6 +1,7 @@
 import html
 import io
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
 from reportlab.lib import colors
@@ -38,10 +39,22 @@ def clean_text(val: Any) -> str:
 
 
 def format_date_str(val: Any) -> str:
-    """Formats dates from YYYYMMDD (int/str), YYYY-MM-DD, YYYY-MM, or YYYY into a clean readable date string."""
-    if not val:
+    """Formats dates from millisecond timestamps, YYYYMMDD, YYYY-MM-DD, YYYY-MM, or YYYY into a clean readable date string."""
+    if val is None or val == "":
         return ""
     val_str = str(val).strip()
+
+    # Millisecond or second epoch timestamp (>= 9 digits)
+    if re.match(r"^\d{9,15}(\.\d+)?$", val_str):
+        try:
+            ts = float(val_str)
+            if ts >= 1e11:
+                ts = ts / 1000.0
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+            return dt.strftime("%Y-%m")
+        except Exception:
+            pass
+
     # YYYYMMDD (e.g. 20230101 -> 2023-01)
     if re.match(r"^\d{8}$", val_str):
         year = val_str[:4]
@@ -206,10 +219,19 @@ class PDFGeneratorService:
         elif isinstance(education, dict):
             edu_list = education.get("educations", [])
 
+        # Extract candidate full name for document metadata
+        first_name = clean_text(personal_info.get("first_name", ""))
+        last_name = clean_text(personal_info.get("last_name", ""))
+        full_name = f"{first_name} {last_name}".strip() or "Candidate"
+
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
             pagesize=letter,
+            title=f"{full_name} Resume",
+            author=full_name,
+            creator="Resumint",
+            subject=f"Professional Resume - {full_name}",
             leftMargin=36,
             rightMargin=36,
             topMargin=36,

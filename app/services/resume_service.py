@@ -32,6 +32,7 @@ from app.repository.work_experience_resume_repository import WorkExperienceResum
 from app.services.gemini_service import gemini_service
 from app.services.cloudinary_service import cloudinary_service
 from app.services.pdf_generator_service import pdf_generator_service
+from app.common.utils import validate_work_experience_non_overlapping
 
 logger = get_logger(__name__)
 
@@ -699,8 +700,19 @@ class ResumeService:
                     detail=ErrorMessage.WORK_EXPERIENCE_ALREADY_EXISTS,
                 )
 
-            data = work_experience.model_dump()
-            data["user_id"] = user_id
+            try:
+                validate_work_experience_non_overlapping(work_experience.work_experience)
+            except ValueError as ve:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=str(ve),
+                )
+
+            items_data = [item.model_dump() for item in work_experience.work_experience]
+            data = {
+                "work_experience": items_data,
+                "user_id": user_id,
+            }
 
             result = await self.work_experience_resume_repo.create(data)
 
@@ -728,9 +740,17 @@ class ResumeService:
                     detail=ErrorMessage.WORK_EXPERIENCE_NOT_FOUND,
                 )
 
-            data = work_experience.model_dump()
+            try:
+                validate_work_experience_non_overlapping(work_experience.work_experience)
+            except ValueError as ve:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=str(ve),
+                )
+
+            items_data = [item.model_dump() for item in work_experience.work_experience]
             result = await self.work_experience_resume_repo.update(
-                record, {"work_experience": data.get("work_experience", [])}
+                record, {"work_experience": items_data}
             )
 
             return success_response(
@@ -1111,9 +1131,20 @@ class ResumeServiceUtils:
         work_exp = await self.work_experience_repo.get_all(
             filters={"user_id": user_id}
         )
-        if work_exp:
-            return True, work_exp[0]
-        return False, None
+        if not work_exp:
+            return False, None
+
+        all_items = []
+        for rec in work_exp:
+            raw = rec.work_experience
+            if isinstance(raw, list):
+                all_items.extend(raw)
+            elif isinstance(raw, dict):
+                all_items.append(raw)
+
+        primary_rec = work_exp[0]
+        primary_rec.work_experience = all_items
+        return True, primary_rec
 
     async def check_projects_info_exist(self, user_id: str):
         projects = await self.project_info_repo.get_all(
