@@ -46,6 +46,16 @@ async def email_login(payload: UserLogin, request: Request, db: AsyncSession = D
     return await user_service.login_user(payload)
 
 
+@router.post("/logout")
+async def logout(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(current_user),
+):
+    user_service = UserService(request, db)
+    return await user_service.logout(user["user_id"])
+
+
 @router.post("/change-password")
 async def change_password(
     payload: UserChangePassword,

@@ -1,5 +1,6 @@
 import uuid
 from app.db.models.user import User
+from app.db.models.user_session import UserSession
 
 
 def test_user_signup_and_verify_flow(client, db_session, mock_email_service):
@@ -99,3 +100,30 @@ def test_rate_limiting_shield(client):
         responses.append(resp.status_code)
 
     assert 429 in responses
+
+
+def test_logout_flow(client, test_user, db_session):
+    headers = test_user["headers"]
+    user_id = str(test_user["user"].id)
+
+    # 1. User can access authenticated endpoint before logout
+    me_resp = client.get("/api/v1/users/me", headers=headers)
+    assert me_resp.status_code == 200
+
+    # 2. Call logout
+    logout_resp = client.post("/api/v1/users/logout", headers=headers)
+    assert logout_resp.status_code == 200
+    assert logout_resp.json()["msg"] == "User Logout Successfully!"
+
+    # 3. Verify session in DB is emptied
+    sessions = db_session.query(UserSession).filter(UserSession.user_id == user_id).all()
+    assert len(sessions) > 0
+    for s in sessions:
+        assert s.session == ""
+        assert s.refresh_token == ""
+
+    # 4. Subsequent authenticated calls fail with 401 Session Expired
+    after_logout_resp = client.get("/api/v1/users/me", headers=headers)
+    assert after_logout_resp.status_code == 401
+    assert "session expired" in after_logout_resp.json().get("detail", "").lower()
+
