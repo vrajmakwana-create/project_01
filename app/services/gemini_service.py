@@ -37,7 +37,19 @@ Analyze the provided resume text and extract all information into a strict, vali
     "summary": "..."
   },
   "skills": {
-    "skills": ["Skill 1", "Skill 2"]
+    "skills": 
+        {
+            "Databases": [],
+            "Testing & QA": [],
+            "Cloud & DevOps": [],
+            "Web Development": [],
+            "Operating Systems": [],
+            "Tools & Technologies": [],
+            "AI & Machine Learning": [],
+            "Programming Languages": [],
+            "Frameworks & Libraries": [],
+            "Data Analysis & Visualization": []
+        }
   },
   "educational_info": {
     "educations": [
