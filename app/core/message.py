@@ -11,6 +11,7 @@ class SuccessMessage:
     USER_VERIFICATION_EMAIL_SEND = "User Verification Email Sent"
     USER_OTP_VERIFIED_SUCCESSFULLY = "User OTP Verified Successfully"
     USER_LOGIN_SUCCESSFULLY = "User Login Successfully!"
+    USER_LOGOUT_SUCCESSFULLY = "User Logout Successfully!"
     USER_CHANGE_PASSWORD_SUCCESSFULLY = "Password Changed Successfully!"
     USER_SESSION_REFRESHED_SUCCESSFULLY = "Session Refreshed Successfully!"
 

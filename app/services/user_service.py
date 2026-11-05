@@ -355,3 +355,22 @@ class UserService:
             raise
         except Exception as e:
             raise ServerException(message=str(e))
+
+    async def logout(self, user_id: str):
+        try:
+            token = None
+            auth_header = self.request.headers.get("authorization")
+            if auth_header and " " in auth_header:
+                token = auth_header.strip().split(" ")[1]
+
+            await self.user_session_repo.empty_user_session(user_id, token=token)
+
+            return success_response(
+                status_code=http_status.HTTP_200_OK,
+                msg=SuccessMessage.USER_LOGOUT_SUCCESSFULLY,
+                data=None,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise ServerException(message=str(e))
