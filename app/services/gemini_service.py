@@ -11,6 +11,7 @@ from app.core.logger import get_logger
 from app.common.utils import (
     calculate_candidate_experience_years,
     structure_skills_into_categories,
+    ORDERED_SKILL_CATEGORIES,
 )
 
 logger = get_logger(__name__)
@@ -392,7 +393,7 @@ class GeminiService:
                 "linkedin": "",
             },
             "professional_summary": {"summary": ""},
-            "skills": {"skills": []},
+            "skills": {"skills": {cat: [] for cat in ORDERED_SKILL_CATEGORIES}},
             "educational_info": {"educations": []},
             "work_experience": {"work_experience": []},
             "projects_info": {"projects": []},
@@ -418,12 +419,8 @@ class GeminiService:
 
         # 3. Skills
         skills = data.get("skills") or {}
-        if isinstance(skills, dict):
-            sk_list = skills.get("skills") or []
-            if isinstance(sk_list, list):
-                out["skills"]["skills"] = [str(s).strip() for s in sk_list if s and str(s).strip()]
-        elif isinstance(skills, list):
-            out["skills"]["skills"] = [str(s).strip() for s in skills if s and str(s).strip()]
+        sk_raw = skills.get("skills") if isinstance(skills, dict) and "skills" in skills else skills
+        out["skills"]["skills"] = structure_skills_into_categories(sk_raw, include_empty=True)
 
         # 4. Educational Info
         edu = data.get("educational_info") or {}
@@ -549,7 +546,10 @@ class GeminiService:
             pattern = r"\b" + re.escape(skill) + r"\b"
             if re.search(pattern, text, re.IGNORECASE):
                 found_skills.add(skill)
-        result["skills"]["skills"] = sorted(list(found_skills))
+        result["skills"]["skills"] = structure_skills_into_categories(
+            sorted(list(found_skills)),
+            include_empty=True,
+        )
 
         # --- Education extraction ---
         edu_matches = re.finditer(

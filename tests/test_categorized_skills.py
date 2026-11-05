@@ -141,3 +141,59 @@ def test_pdf_generation_with_categorized_skills():
         skills=cat_skills,
     )
     assert len(pdf_bytes) > 1000
+
+
+def test_gemini_service_extract_categorized_skills_format():
+    from app.services.gemini_service import gemini_service
+    from app.common.utils import ORDERED_SKILL_CATEGORIES
+
+    # 1. Test empty structure
+    empty = gemini_service._build_empty_structure()
+    assert isinstance(empty["skills"]["skills"], dict)
+    assert len(empty["skills"]["skills"]) == 10
+    for cat in ORDERED_SKILL_CATEGORIES:
+        assert cat in empty["skills"]["skills"]
+        assert empty["skills"]["skills"][cat] == []
+
+    # 2. Test sanitize with user's exact dictionary structure
+    user_skills_payload = {
+        "skills": {
+            "skills": {
+                "Databases": ["MongoDB", "PostgreSQL", "MySQL", "Redis", "SQLite"],
+                "Testing & QA": ["Pytest", "Unit Testing"],
+                "Cloud & DevOps": ["CI/CD", "AWS", "Docker", "Azure", "GitHub Actions"],
+                "Web Development": ["React", "Tailwind CSS", "CSS3", "RESTful APIs"],
+                "Operating Systems": ["macOS", "Linux", "Windows"],
+                "Tools & Technologies": [],
+                "AI & Machine Learning": ["RAG Systems", "AI Orchestration", "LangChain", "LLMs"],
+                "Programming Languages": ["Python", "JavaScript", "Java", "SQL"],
+                "Frameworks & Libraries": ["Django", "Django REST Framework", "FastAPI", "React", "Node.js", "Express", "Next.js"],
+                "Data Analysis & Visualization": ["Pandas"]
+            }
+        }
+    }
+    sanitized = gemini_service._sanitize_and_fill(user_skills_payload, "")
+    extracted_skills = sanitized["skills"]["skills"]
+    assert isinstance(extracted_skills, dict)
+    assert len(extracted_skills) == 10
+    assert "MongoDB" in extracted_skills["Databases"]
+    assert "Pytest" in extracted_skills["Testing & QA"]
+    assert "AWS" in extracted_skills["Cloud & DevOps"]
+    assert "React" in extracted_skills["Web Development"]
+    assert "macOS" in extracted_skills["Operating Systems"]
+    assert extracted_skills["Tools & Technologies"] == []
+    assert "LangChain" in extracted_skills["AI & Machine Learning"]
+    assert "Python" in extracted_skills["Programming Languages"]
+    assert "FastAPI" in extracted_skills["Frameworks & Libraries"]
+    assert "Pandas" in extracted_skills["Data Analysis & Visualization"]
+
+    # 3. Test fallback extractor
+    sample_text = "John Doe\nSummary: Software developer\nSkills: Python, FastAPI, Docker, PostgreSQL, Linux"
+    fallback_res = gemini_service._fallback_extract(sample_text)
+    fb_skills = fallback_res["skills"]["skills"]
+    assert isinstance(fb_skills, dict)
+    assert len(fb_skills) == 10
+    assert "Python" in fb_skills["Programming Languages"]
+    assert "PostgreSQL" in fb_skills["Databases"]
+    assert "Docker" in fb_skills["Cloud & DevOps"]
+    assert "Linux" in fb_skills["Operating Systems"]

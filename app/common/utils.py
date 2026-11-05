@@ -276,6 +276,7 @@ SKILL_TO_CATEGORY_MAP = {
 def structure_skills_into_categories(
     skills_data: Any,
     existing_categorized: Optional[Dict[str, List[str]]] = None,
+    include_empty: bool = False,
 ) -> Dict[str, List[str]]:
     """Structures any skills data (dict, list of category objects, or list of strings)
     into the 10 standard skill categories. Preserves candidate's pre-assigned categories when present.
@@ -345,13 +346,15 @@ def structure_skills_into_categories(
                     cat = "Tools & Technologies"
                 add_skill(cat, s_clean)
 
-    # Filter out empty categories and return in standard 10-category order
+    # Filter out empty categories (unless include_empty is True) and return in standard 10-category order
     final_dict: Dict[str, List[str]] = {}
     for cat in ORDERED_SKILL_CATEGORIES:
-        if cat in result and result[cat]:
-            final_dict[cat] = result[cat]
+        if cat in result:
+            if result[cat] or include_empty:
+                final_dict[cat] = result[cat]
     for cat, items in result.items():
-        if cat not in ORDERED_SKILL_CATEGORIES and items:
-            final_dict[cat] = items
+        if cat not in ORDERED_SKILL_CATEGORIES:
+            if items or include_empty:
+                final_dict[cat] = items
 
     return final_dict
