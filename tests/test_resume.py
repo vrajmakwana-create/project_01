@@ -499,7 +499,12 @@ def test_upload_resume_persists_extracted_info_to_db(client, test_user):
     assert resp.status_code == 200
     res_data = resp.json()["data"]
     assert "extracted_data" in res_data
-    assert "Python" in res_data["extracted_data"]["skills"]["skills"]
+    extracted_skills = res_data["extracted_data"]["skills"]["skills"]
+    if isinstance(extracted_skills, dict):
+        all_skills = [s for sublist in extracted_skills.values() if isinstance(sublist, list) for s in sublist]
+        assert "Python" in all_skills
+    else:
+        assert "Python" in extracted_skills
 
     # Verify that the extracted information was automatically saved to DB
     details_resp = client.get("/api/v1/resume/details", headers=headers)
@@ -507,7 +512,12 @@ def test_upload_resume_persists_extracted_info_to_db(client, test_user):
     details = details_resp.json()["data"]
     assert details["personal_info"] is not None
     assert details["skills"] is not None
-    assert "Python" in details["skills"]["skills"]
+    saved_skills = details["skills"]["skills"]
+    if isinstance(saved_skills, dict):
+        all_saved = [s for sublist in saved_skills.values() if isinstance(sublist, list) for s in sublist]
+        assert "Python" in all_saved
+    else:
+        assert "Python" in saved_skills
 
 
 def test_upload_resume_with_gemini_ai_mock(client, test_user):

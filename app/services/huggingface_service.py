@@ -7,6 +7,10 @@ from huggingface_hub import AsyncInferenceClient
 
 from app.core.config import settings
 from app.core.logger import get_logger
+from app.common.utils import (
+    ORDERED_SKILL_CATEGORIES,
+    structure_skills_into_categories,
+)
 
 logger = get_logger(__name__)
 
@@ -32,7 +36,18 @@ Analyze the provided resume text and extract all information into a strict, vali
     "summary": "..."
   },
   "skills": {
-    "skills": ["Skill 1", "Skill 2"]
+    "skills": {
+      "Databases": [],
+      "Testing & QA": [],
+      "Cloud & DevOps": [],
+      "Web Development": [],
+      "Operating Systems": [],
+      "Tools & Technologies": [],
+      "AI & Machine Learning": [],
+      "Programming Languages": [],
+      "Frameworks & Libraries": [],
+      "Data Analysis & Visualization": []
+    }
   },
   "educational_info": {
     "educations": [
@@ -313,7 +328,10 @@ class HuggingFaceService:
                 "summary": summary,
             },
             "skills": {
-                "skills": skills_found if skills_found else ["Python", "FastAPI"],
+                "skills": structure_skills_into_categories(
+                    skills_found if skills_found else ["Python", "FastAPI"],
+                    include_empty=True,
+                ),
             },
             "educational_info": {
                 "educations": [
@@ -393,7 +411,10 @@ class HuggingFaceService:
                 "summary": summary.get("summary") or template["professional_summary"]["summary"],
             },
             "skills": {
-                "skills": skills.get("skills") if isinstance(skills.get("skills"), list) and skills.get("skills") else template["skills"]["skills"],
+                "skills": structure_skills_into_categories(
+                    skills.get("skills") if isinstance(skills, dict) and "skills" in skills else skills,
+                    include_empty=True,
+                ),
             },
             "educational_info": {
                 "educations": education.get("educations") if isinstance(education.get("educations"), list) and education.get("educations") else template["educational_info"]["educations"],
@@ -424,7 +445,7 @@ class HuggingFaceService:
                 "linkedin": "",
             },
             "professional_summary": {"summary": ""},
-            "skills": {"skills": []},
+            "skills": {"skills": {cat: [] for cat in ORDERED_SKILL_CATEGORIES}},
             "educational_info": {"educations": []},
             "work_experience": {"work_experience": []},
             "projects_info": {"projects": []},
